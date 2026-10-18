@@ -6,9 +6,9 @@
 
 ## 环境
 
-- macOS + **Xcode 27.1**（iOS 27.0 / visionOS 27.0 SDK）。
+- macOS + **Xcode 27.1**（iOS 27.0 SDK；visionOS 目标仅内部构建，未发布）。
 - 构建：`tools/apple/verify_all.sh`（生成工程 → Mac Catalyst / iOS Simulator /
-  visionOS Simulator Debug 构建 → 三个发布包）。
+  iOS Simulator Debug 构建 → iOS / Mac 发布包；visionOS 仅内部构建）。
 - 引擎：OpenBGI + Apple 后端；本作新增 `GEN_1_520`
   （1.529 指令集行 + 1.529 行为门限，`LAYOUT_C` 指针布局，64 MB 堆）。原版
   `BGI.exe` 带 Alpha-ROM 类加壳，无法静态导出指令表（见 [RE-1520.md](RE-1520.md)、
@@ -59,7 +59,7 @@ bin/openbgi-hosttest GAME_DIR --chinese --save=/tmp/save --seconds=60 \
 |---|---|---|
 | iPhone 18 Pro Max，iOS 27 | 启动器检测数据 → 引擎 → 标题画面；冷开场中文文本 | 通过（`iphone-sim-title.png`、`iphone-sim-story-device.png`） |
 | iPad Pro 13" (M5)，iOS 27 | 同上，1280×720 画面自适应 | 通过（`ipad-sim-title.png`、`ipad-sim-device.png`） |
-| Apple Vision Pro，visionOS 27 | 原生 visionOS 窗口、标题画面（含版权 WARNING 页） | 通过（`vision-sim-title2.png`、`vision-sim-device2.png`） |
+| visionOS 27（未发布） | 原生 visionOS 窗口、标题画面（含版权 WARNING 页） | 仅模拟器自测；本次发布不包含 Vision Pro 安装包 |
 
 模拟器运行时通过 `SIMCTL_CHILD_EUSTIA_GAME_DIR` 指向 `/tmp` 下的完整数据副本；
 应用只读取，不写入游戏目录。
@@ -79,6 +79,7 @@ bin/openbgi-hosttest GAME_DIR --chinese --save=/tmp/save --seconds=60 \
 
 ### iPhone 16 Pro Max（已真机验证）
 
+- 验证使用的是修复 iPadOS 26 字体回退崩溃之前的 IPA；修复后的 IPA 已在 iPad Pro 上验证，功能相同。
 - 用 **Sideloadly**（保存的 Apple ID，免费账号）签名安装 `build/Eustia-ios.ipa`；
   安装后 Bundle ID 被 Sideloadly 追加了一次 Team ID（`org.local.eustia.HM588ACCT5.HM588ACCT5`），
   不影响使用。
@@ -114,7 +115,7 @@ bin/openbgi-hosttest GAME_DIR --chinese --save=/tmp/save --seconds=60 \
 
 | 设备 | 状态 |
 |---|---|
-| Apple Vision Pro（第一代） | 原生 visionOS 目标与未签名 IPA 已生成、visionOS 模拟器通过；真机需在 Xcode 中选 Team 后 Run（或后续用支持 visionOS 的侧载方式），本轮未做真机验证。 |
+| Apple Vision Pro（第一代） | 未调试，本次不发布；源码中的 visionOS 目标未包含在 Release 里。 |
 
 > 真机安装需要玩家自己的 Apple ID 签名，这是 Apple 的限制；本仓库不包含任何证书、
 > 描述文件或账号信息。
