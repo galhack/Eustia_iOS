@@ -586,14 +586,16 @@ static int Opcode_Strcat2(Thread_t* t) // 6B: dst, a, b →
 	return 0;
 }
 
-/* decode the first character of a Shift-JIS string: its code, whether it is
- * a double-byte character, and whether it is one that may not start a line
- * (kinsoku; that flag ends on top) */
+/* decode the first character of the script text: its code, whether it is a
+ * double-byte character, and whether it is one that may not start a line
+ * (kinsoku; that flag ends on top).  The bytes are Shift-JIS, or GBK under
+ * a Chinese patch (gTextGbk); both use the same lead byte / single byte
+ * shape, so one decoder serves the two. */
 static int Opcode_Getchar(Thread_t* t) // 6C: s → ch, dbcs, kinsoku
 {
 	char* s = (char*)PopPtr(t);
 	uint32_t ch;
-	int dbcs = SjisGetChar(&ch, s);
+	int dbcs = TextGetChar(&ch, s) == 2;
 	Thread_Push(t, ch);
 	Thread_Push(t, (uint32_t)dbcs);
 	Thread_Push(t, (uint32_t)IsKinsokuChar(ch));
@@ -1011,6 +1013,29 @@ static int Opcode_WatchAdd(Thread_t* t) // 75: addr, size, name → ok
 /* a system-modal yes / no question box with the script's text; `flag`
  * selects the default button (yes when non-zero, no otherwise).  Pushes 1
  * when "yes" was chosen. */
+/* 77: index → value
+ * An engine-statistics accessor of the original's debug overlay (the 1.647
+ * proxy indexes a table of 18 stats; see docs/RE-1520-OPCODES.md).  Only
+ * dbgmngr._bp, the debug manager loaded when "debug.inf" exists, calls it.
+ * The reimplementation has no statistics object; the overlay shows 0. */
+static int Opcode_WatchValue(Thread_t* t) // 77
+{
+	Thread_Pop(t);
+	Thread_Push(t, 0);
+	return 0;
+}
+
+/* 7C: a, b → r
+ * The original's developer event selector ("イベントを選択してください",
+ * a list dialog); referenced by no shipped program.  Nothing is selected. */
+static int Opcode_DebugSelect(Thread_t* t) // 7C
+{
+	Thread_Pop(t);
+	Thread_Pop(t);
+	Thread_Push(t, 0);
+	return 0;
+}
+
 static int Opcode_ConfirmBox(Thread_t* t) // 78: text, flag → yes
 {
 	uint32_t flag = Thread_Pop(t);
@@ -1368,10 +1393,12 @@ void Vm_OptableMainInit(void)
 		{0x71, Opcode_Lfree, GEN_FIRST, GEN_LAST},
 		{0x74, Opcode_WatchMode, GEN_FIRST, GEN_LAST},
 		{0x75, Opcode_WatchAdd, GEN_FIRST, GEN_LAST},
+		{0x77, Opcode_WatchValue, GEN_FIRST, GEN_LAST},
 		{0x78, Opcode_ConfirmBox, GEN_FIRST, GEN_LAST},
 		{0x79, Opcode_DebugMsg, GEN_FIRST, GEN_LAST},
 		{0x7a, Opcode_DebugNum, GEN_FIRST, GEN_LAST},
 		{0x7b, Opcode_DebugDump, GEN_FIRST, GEN_LAST},
+		{0x7c, Opcode_DebugSelect, GEN_FIRST, GEN_LAST},
 		{0x7d, Opcode_DebugText, GEN_FIRST, GEN_LAST},
 		{0x7e, Opcode_ClipboardSet, GEN_1_69_472, GEN_LAST},
 		{0x7f, Opcode_Nop, GEN_FIRST, GEN_1_662}, // a build-dependent debugging hook before 1.667

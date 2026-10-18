@@ -1,0 +1,93 @@
+gen_switches_1520.txt - every generation comparison in engine/openbgi/src
+
+Generation order (release order, src/core/version.c) is the comparison basis;
+the 1.520 profile is treated as the 1.529 level (docs/RE-1520.md section 5):
+the original 1.520.6 programs already use 1.529-row opcodes (81 0F 1E 30 60 63
+64, 90 06, 91 1D 55, 92 17, B0 06; the game's 1280x720 windows need the 1.529
+size limits and its proportional text needs the 1.529 metrics).  The side
+column is what the condition evaluates to for the 1.520 profile.
+Registration tables (OpEntry from/to) are not listed: the opcode row is
+tools/re/opset_1520.txt and GEN_1_520 is ordered after GEN_1_529 in
+EngineGen_t, so every handler registered from <=1.529 is live and none from
+>=1.535 is.
+
+OFF | src/vm/ops_gfx0.c:82 | gen == GEN_1_58 | if(gEngine->gen == GEN_1_58 ? (int)fps < 0 || (int)fps > 1000
+OFF | src/vm/ops_gfx0.c:95 | gen == GEN_1_58 | if(gEngine->gen == GEN_1_58 ? (int)size < 0 || size > limit : size > limit)
+OFF | src/vm/ops_gfx0.c:94 | gen <= GEN_1_64 | uint32_t limit = gEngine->gen <= GEN_1_64 ? 0x4000000 : 0x20000000;
+OFF | src/vm/ops_sys.c:905 | gen <= GEN_1_64 | if(!target && id == 0 && gEngine->gen <= GEN_1_64 && Thread_GetId(gRootThread) == 0)
+OFF | src/sys/display.c:56 | gen <= GEN_1_66 | if(gEngine->gen <= GEN_1_66)
+ON  | src/sysobj/database.c:55 | gen >= GEN_1_69_451 | if(gEngine->gen >= GEN_1_69_451)
+OFF | src/sysobj/database.c:70 | gen < GEN_1_69_451 | if(gEngine->gen < GEN_1_69_451)
+OFF | src/core/loadfile.c:174 | gen <= GEN_1_69_472 | uint32_t limit = gEngine->gen <= GEN_1_69_472 ? 0x2800000u : 0x4000000u; // 40 MB, 64 MB from 1.494
+OFF | src/core/loadfile.c:283 | gen <= GEN_1_69_472 | uint32_t limit = gEngine->gen <= GEN_1_69_472 ? 0x2800000u : 0x4000000u; // 40 MB, 64 MB from 1.494
+OFF | src/gfx/dispobj.c:673 | gen < GEN_1_69_472 | if(gEngine->gen < GEN_1_69_472)
+ON  | src/vm/ops_gfx0.c:732 | gen >= GEN_1_69_472 | if(gEngine->gen >= GEN_1_69_472)
+ON  | src/gfx/dispobj.c:666 | gen >= GEN_1_494 | case 0x8000: DispObj_SetSnap(o, a, gEngine->gen >= GEN_1_494 ? b : 0); return 0;
+OFF | src/gfx/dispobj.c:668 | gen < GEN_1_494 | if(gEngine->gen < GEN_1_494)
+OFF | src/gfx/dispobj.c:693 | gen < GEN_1_494 | if(gEngine->gen < GEN_1_494)
+OFF | src/gfx/dispobj.c:698 | gen < GEN_1_494 | if(gEngine->gen < GEN_1_494)
+OFF | src/gfx/dispobj.c:752 | gen < GEN_1_494 | if(gEngine->gen < GEN_1_494)
+OFF | src/gfx/dispobj.c:773 | gen < GEN_1_494 | if(gEngine->gen < GEN_1_494)
+OFF | src/gfx/sprite.c:730 | gen < GEN_1_494 | if(gEngine->gen < GEN_1_494)
+ON  | src/gfx/text/layout_common.c:86 | gen >= GEN_1_494 | if(style[0] == 2 && gEngine->gen >= GEN_1_494)
+ON  | src/gfx/text/layout_common.c:126 | gen >= GEN_1_494 | if(style[0] == 2 && gEngine->gen >= GEN_1_494)
+ON  | src/gfx/text/layout_h.c:50 | gen >= GEN_1_494 | m.on = gEngine->gen >= GEN_1_494;
+ON  | src/gfx/text/text.c:154 | gen >= GEN_1_494 | if(gEngine->gen >= GEN_1_494 && (uint32_t)on > 2)
+ON  | src/gfx/text/text.c:158 | gen >= GEN_1_494 | out[0] = gEngine->gen >= GEN_1_494 ? on : 1;
+ON  | src/sys/display.c:60 | gen >= GEN_1_494 | else if(gEngine->gen >= GEN_1_494)
+ON  | src/sys/sprpanel.c:231 | gen >= GEN_1_494 | if(gEngine->gen >= GEN_1_494 && (b->flags & 0x2))
+ON  | src/vm/ops_gfx1.c:536 | gen >= GEN_1_494 | if(gEngine->gen >= GEN_1_494)
+ON  | src/vm/ops_sys.c:1006 | gen >= GEN_1_494 | if(sizeIdx >= (gEngine->gen >= GEN_1_494 ? 8u : 4u)) // the size table has eight entries from 1.494 on, four before
+OFF | src/vm/ops_sys.c:1404 | gen < GEN_1_494 | if(gEngine->gen < GEN_1_494)
+OFF | src/vm/ops_sys.c:1423 | gen < GEN_1_494 | if(gEngine->gen < GEN_1_494) // (see "80 89")
+OFF | src/vm/ops_sys.c:1445 | gen < GEN_1_494 | if(gEngine->gen < GEN_1_494) // (see "80 89")
+ON  | src/gfx/text/layout_common.c:139 | gen >= GEN_1_529 | if(gEngine->gen >= GEN_1_529 && fi && fi->font)
+ON  | src/gfx/text/layout_h.c:71 | gen >= GEN_1_529 | else if(c == 3 && gEngine->gen >= GEN_1_529)
+ON  | src/gfx/text/markup.c:406 | gen >= GEN_1_529 | if(gEngine->gen >= GEN_1_529)
+ON  | src/gfx/text/strings.c:75 | gen >= GEN_1_529 | if(!proportional && gEngine->gen >= GEN_1_529 && fi->font)
+ON  | src/gfx/window/window.c:156 | gen >= GEN_1_529 | if(uw == 0 || uw > (gEngine->gen >= GEN_1_529 ? 0x780u : 0x400u) || uh == 0 ||
+ON  | src/gfx/window/window.c:157 | gen >= GEN_1_529 | uh > (gEngine->gen >= GEN_1_529 ? 0x8000u : 0x300u))
+ON  | src/sys/input.c:145 | gen >= GEN_1_529 | if(gEngine->gen >= GEN_1_529 && !Window_IsActive() && !gKeysWhenInactive)
+OFF | src/sys/input.c:360 | gen < GEN_1_529 | if(gEngine->gen < GEN_1_529)
+OFF | src/sys/input.c:365 | gen < GEN_1_529 | if(gEngine->gen < GEN_1_529)
+ON  | src/gfx/dispobj.c:757 | gen < GEN_1_535 | if(gEngine->gen < GEN_1_535)
+OFF | src/vm/ops_gfx0.c:443 | gen >= GEN_1_535 | if(gEngine->gen >= GEN_1_535)
+OFF | src/core/loadfile.c:38 | gen >= GEN_1_573 | int limit = gEngine->gen >= GEN_1_573 ? 0x5f : 15;
+ON  | src/gfx/dispobj.c:647 | gen < GEN_1_573 | if(gEngine->gen < GEN_1_573)
+ON  | src/gfx/dispobj.c:652 | gen < GEN_1_573 | if(gEngine->gen < GEN_1_573)
+ON  | src/gfx/sprite.c:735 | gen < GEN_1_573 | if(gEngine->gen < GEN_1_573)
+ON  | src/gfx/text/text.c:236 | gen < GEN_1_573 | if(gen < GEN_1_573)
+OFF | src/gfx/sprite.c:732 | gen >= GEN_1_588 | Sprite_SetZoom(s, a, gEngine->gen >= GEN_1_588 ? c : 0);
+OFF | src/sys/sprpanel.c:217 | gen >= GEN_1_588 | if(gEngine->gen >= GEN_1_588 && !b->shown)
+OFF | src/sys/sprpanel.c:229 | gen >= GEN_1_588 | if(gEngine->gen >= GEN_1_588 && (b->flags & 0x10))
+OFF | src/sys/sprpanel.c:400 | gen >= GEN_1_588 | ok = (gEngine->gen >= GEN_1_588 ? SpriteIsDrawn(&sb[i]) : (sb[i].enabled || sb[i].shown)) &&
+OFF | src/sysobj/strtables.c:125 | gen >= GEN_1_599 | if(gEngine->gen >= GEN_1_599)
+ON  | src/gfx/dispobj.c:562 | gen < GEN_1_616 | if(gEngine->gen < GEN_1_616 || !o->followOffset)
+ON  | src/gfx/dispobj.c:657 | gen < GEN_1_616 | if(gEngine->gen < GEN_1_616)
+ON  | src/gfx/dispobj.c:762 | gen < GEN_1_616 | if(gEngine->gen < GEN_1_616)
+ON  | src/gfx/text/text.c:238 | gen < GEN_1_616 | else if(gen < GEN_1_616)
+OFF | src/sys/engine.c:150 | gen >= GEN_1_616 | gSysAreaSize = gEngine->gen >= GEN_1_616 ? 0x100000 : 0x40000;
+OFF | src/sysobj/names.c:19 | gen >= GEN_1_616 | #define GNAME_IN_STRTAB (gEngine->gen >= GEN_1_616)
+ON  | src/gfx/dispobj.c:399 | gen < GEN_1_640 | if(gEngine->gen < GEN_1_640 || (o->flagBits & 1))
+OFF | src/gfx/dispobj.c:509 | gen >= GEN_1_640 | if(o->sortMode == 1 && gEngine->gen >= GEN_1_640)
+ON  | src/gfx/dispobj.c:662 | gen < GEN_1_640 | if(gEngine->gen < GEN_1_640)
+ON  | src/gfx/dispobj.c:678 | gen < GEN_1_640 | if(gEngine->gen < GEN_1_640)
+ON  | src/gfx/dispobj.c:687 | gen < GEN_1_640 | if(gEngine->gen < GEN_1_640)
+ON  | src/gfx/text/text.c:240 | gen < GEN_1_640 | else if(gen < GEN_1_640)
+OFF | src/sys/sprpanel.c:219 | gen >= GEN_1_640 | if(gEngine->gen >= GEN_1_640 && (b->flags & 0x40))
+OFF | src/vm/ops_ext1.c:275 | gen >= GEN_1_640 | if(mode > (gEngine->gen >= GEN_1_640 ? 2u : 1u))
+ON  | src/gfx/text/text.c:242 | gen < GEN_1_647 | else if(gen < GEN_1_647)
+OFF | src/sys/present.c:53 | gen >= GEN_1_647 | else if(fps == 0 && gEngine->gen >= GEN_1_647)
+OFF | src/vm/ops_gfx0.c:83 | gen >= GEN_1_647 | : fps > 1000 || (fps < 1 && !(fps == 0 && gEngine->gen >= GEN_1_647)))
+OFF | src/vm/ops_gfx0.c:2765 | gen >= GEN_1_647 | !(gEngine->gen >= GEN_1_647 && Movie_FindInArchives(file, path, &offset, &size)))
+ON  | src/gfx/text/text.c:244 | gen < GEN_1_653 | else if(gen < GEN_1_653)
+OFF | src/vm/ops_base.c:613 | gen >= GEN_1_654 | if(gEngine->gen >= GEN_1_654)
+ON  | src/gfx/text/text.c:246 | gen < GEN_1_659 | else if(gen < GEN_1_659)
+OFF | src/sys/display.c:58 | gen >= GEN_1_659 | else if(gEngine->gen >= GEN_1_659)
+OFF | src/asm/as.c:631 | gen >= GEN_1_667 | int inlineForm = (a->gen == GEN_COUNT || a->gen >= GEN_1_667) && Eval(a, st->opd[0].expr, a->line, 0, &cc) && (cc & 8);
+OFF | src/asm/as.c:730 | gen >= GEN_1_667 | case 0x15: return (gen == GEN_COUNT || gen >= GEN_1_667) ? "k?" : "k";
+OFF | src/asm/decode.c:203 | gen >= GEN_1_667 | case 0x15: return (gen == GEN_COUNT || gen >= GEN_1_667) ? "k?" : "k";
+OFF | src/asm/decode.c:290 | gen >= GEN_1_667 | if(out->op >= 0x80 ? Asm_FamilyName(out->op) != NULL : (out->op == 0x7f && gen != GEN_COUNT && gen >= GEN_1_667))
+ON  | src/gfx/text/text.c:248 | gen < GEN_1_669 | else if(gen < GEN_1_669)
+
+78 comparison lines: 37 ON, 41 OFF, 0 undecided

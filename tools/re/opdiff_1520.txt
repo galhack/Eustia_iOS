@@ -1,0 +1,32 @@
+opdiff_1520.txt - 1.520 (proxy: 1.529 row) against 1.494 and 1.529
+
+1.520 proxy vs 1.494: the proxy adds the opcodes below; none were removed.
+  main +66*  -(none)
+  80   +06 07 EA  -(none)
+  81   +0A 0B 0C 0D 0E 0F* 14 1E* 30* 31 63* 64* E9 F2  -(none)
+  90   +06* 92  -(none)
+  91   +0E 0F 1D* 55* 69 70 71 73 74 75 76 78 79 7A 7B 7C 7D 99 9A 9E 9F BB  -(none)
+  92   +13 16 17* 9D 9E 9F  -(none)
+  A0   +23*  -(none)
+  B0   +06* 22 C1 C4  -(none)
+  (* = referenced by the original 1.520.6 programs)
+
+1.520 proxy vs 1.529: identical by construction (the proxy is the 1.529 row).
+
+1.520 proxy vs 1.647 (context only - the closest unpacked executable):
+  main 1.647 defines 14 more: 44 56 57 58 59 5A 5B 5D 5E 5F 64 65 D0 E0
+  80   1.647 defines 10 more: 03 09 26 52 9E AF CF DA DB DE
+  81   1.647 defines 52 more: 04 07 08 09 16 17 18 19 1B 1D 28 29 2A 2B 2C 2D 2F 32 35 36 37 38 39 3C 3D 3E 44 61 62 68 69 6A 6B 6D 6E 6F 80 B0 B7 B8 B9 D0 D1 D2 D3 D4 D5 E0 EA EC ED F7
+  90   1.647 defines 16 more: 39 5D C0 C1 C2 C3 C4 C5 C6 C7 C8 CA CC CD CE CF
+  91   1.647 defines 12 more: 03 06 0A 0B 0C 0D 17 31 3D 7E 7F DB
+  92   1.647 defines 11 more: 12 1B 31 3D 97 98 9B F1 F4 F5 F6
+  A0   1.647 defines 5 more: 1C 27 28 2C 2F
+  B0   1.647 defines 11 more: 2A 83 86 87 8C A0 A1 A2 A3 C6 C7
+  C0   1.647 defines 7 more: 06 1A 1B C0 C1 C2 C3
+  D0   1.647 defines 48 more: 00 01 04 05 10 11 12 14 15 16 17 18 20 21 22 23 28 2C 2D 40 41 60 61 62 63 64 65 66 67 68 69 6A 70 72 74 75 78 79 7A 80 81 84 87 88 8A 8C 8D 8E
+  E0   1.647 defines 5 more: 00 40 80 C0 C2
+
+Opcode handlers needed first (used by the original 1.520.6 programs, no
+handler in openbgi): A0 23 (scrsnd._bp) and main 77 (dbgmngr._bp).
+All other 21 entries of --list-missing at 1.529 are unreferenced by any
+of the 68 ._bp programs (docs/RE-1520-OPCODES.md).

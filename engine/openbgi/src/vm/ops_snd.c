@@ -216,6 +216,25 @@ static int Opcode_Snd_SeLoadEx(Thread_t* t)
 	return 2;
 }
 
+/* A0 23: slot, arc, name, fadeInMs, gain16 →
+ * The twin of "A0 21": the 1.647 handler this reimplementation follows
+ * (the 1.520 executable is packed; see docs/RE-1520-OPCODES.md) pops and
+ * waits exactly as "A0 21" does and differs only in one double stored in
+ * the wait object that the loader does not use (a load-mode field).  The
+ * game's scrsnd._bp issues it with a 1 ms fade and gain 1.0, so the same
+ * implementation serves both. */
+static int Opcode_Snd_SeLoadEx2(Thread_t* t)
+{
+	int32_t gain16 = (int32_t)Thread_Pop(t);
+	int fadeInMs = (int)Thread_Pop(t);
+	const char* name = (const char*)PopPtr(t);
+	const char* arc = (const char*)PopPtr(t);
+	int slot = (int)Thread_Pop(t);
+	CheckSeSlot(slot, t);
+	Thread_SetWait(t, WaitSeLoad_New(t, slot, arc, name, fadeInMs, gain16 / 65536.0));
+	return 2;
+}
+
 static int Opcode_Snd_SeUnload(Thread_t* t) // A0 22: slot →
 {
 	int slot = (int)Thread_Pop(t);
@@ -326,6 +345,7 @@ void Vm_OptableA0Init(void)
 		{0x20, Opcode_Snd_SeLoad, GEN_FIRST, GEN_LAST},
 		{0x21, Opcode_Snd_SeLoadEx, GEN_FIRST, GEN_LAST},
 		{0x22, Opcode_Snd_SeUnload, GEN_FIRST, GEN_LAST},
+		{0x23, Opcode_Snd_SeLoadEx2, GEN_FIRST, GEN_LAST},
 		{0x24, Opcode_Snd_SePlay, GEN_FIRST, GEN_LAST},
 		{0x25, Opcode_Snd_SeStop, GEN_FIRST, GEN_LAST},
 		{0x26, Opcode_Snd_SeFadeOut, GEN_FIRST, GEN_LAST},

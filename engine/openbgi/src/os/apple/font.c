@@ -17,13 +17,16 @@
  * to Hiragino Sans (W6 for bold), with the system's Japanese font as the
  * last resort.
  *
- * Under the Chinese patch (gAppleChinese) a two-byte character is GBK, not
- * Shift-JIS: the patch keeps the engine's Shift-JIS character boundaries
- * by spelling the common hanzi whose GBK lead byte falls in 0xA1 .. 0xDF
- * with rare GBK characters instead, which its font.ttf draws as the
- * intended ones.  Each character is therefore decoded as GBK and looked up
- * in that font first (registered by AppleFont_Register), then in the
- * system's simplified Chinese font.
+ * Under the Chinese patch (gAppleChinese) the script text is GBK: the
+ * engine's text layer is told so (Text_SetEncoding(TEXT_GBK), src/os/apple/
+ * host.c) and hands over GBK character boundaries and two-byte codes, and
+ * each code is decoded here as GBK (GbkChar, via the system's GBK table),
+ * then looked up in the patch font when one was registered
+ * (AppleFont_Register) and otherwise in a Heiti-family face (CreateChinese:
+ * PingFang SC first, then Heiti SC / Hiragino Sans GB with a Core Text
+ * cascade list for the glyphs one face lacks).  The Windows build draws the
+ * same text with GDI's SHIFTJIS_CHARSET, which is why the byte strings and
+ * the line breaking need GBK's rules in the engine but nothing here.
  */
 #include "apple_internal.h"
 #include "bgi/msg.h"
@@ -87,15 +90,61 @@ static uint32_t TwoByteChar(uint16_t code)
 // the code point of a character of `len` bytes (OsCommon_CodePoint handles UTF-8 text and single bytes)
 static uint32_t CodePoint(const char* s, int len)
 {
+	if(gAppleChinese && len == 2) // GBK: both bytes of the pair are part of the code
+		return GbkChar((uint16_t)((uint8_t)s[0] << 8 | (uint8_t)s[1]));
 	return OsCommon_CodePoint(s, len, TwoByteChar);
 }
 
+// `code` as UTF-8 into `out` (n bytes); the bytes written
+static size_t CodePointToUtf8(uint32_t code, char* out, size_t n)
+{
+	char tmp[4];
+	size_t len;
+	if(code < 0x80)
+		tmp[0] = (char)code, len = 1;
+	else if(code < 0x800)
+		tmp[0] = (char)(0xc0 | code >> 6), tmp[1] = (char)(0x80 | (code & 0x3f)), len = 2;
+	else if(code < 0x10000)
+		tmp[0] = (char)(0xe0 | code >> 12), tmp[1] = (char)(0x80 | ((code >> 6) & 0x3f)),
+		tmp[2] = (char)(0x80 | (code & 0x3f)), len = 3;
+	else
+		tmp[0] = (char)(0xf0 | code >> 18), tmp[1] = (char)(0x80 | ((code >> 12) & 0x3f)),
+		tmp[2] = (char)(0x80 | ((code >> 6) & 0x3f)), tmp[3] = (char)(0x80 | (code & 0x3f)), len = 4;
+	if(len >= n)
+		len = n ? n - 1 : 0;
+	if(len)
+		memcpy(out, tmp, len);
+	return len;
+}
+
 /* Text the engine hands the application (message boxes) as UTF-8: GBK or
- * Shift-JIS by the same rule, on the Shift-JIS character boundaries the
- * engine uses */
+ * Shift-JIS by the same rule, on that encoding's character boundaries (the
+ * engine's text layer hands the message strings over as they are) */
 void AppleText_ToUtf8(const char* text, char* out, size_t n)
 {
-	OsCommon_SjisToUtf8(text ? text : "", out, n, TwoByteChar);
+	size_t used = 0;
+	if(!gAppleChinese)
+	{
+		OsCommon_SjisToUtf8(text ? text : "", out, n, TwoByteChar);
+		return;
+	}
+	for(; text && *text && used + 4 < n;)
+	{
+		const uint8_t* u = (const uint8_t*)text;
+		uint32_t cp;
+		if(u[0] >= 0x81 && u[1] >= 0x40 && u[1] <= 0xfe && u[1] != 0x7f)
+		{
+			cp = GbkChar((uint16_t)(u[0] << 8 | u[1]));
+			text += 2;
+		}
+		else
+		{
+			cp = u[0];
+			text++;
+		}
+		used += CodePointToUtf8(cp, out + used, n - used);
+	}
+	out[used] = 0;
 }
 
 // ---- faces ----------------------------------------------------------------------------------------
@@ -170,17 +219,71 @@ static CTFontRef CreateJapanese(const char* sjisFace, int bold, CGFloat size, in
 	return f;
 }
 
+/* The faces of the simplified Chinese text, most wanted first: the Windows
+ * patch forces the GDI face "黑体" through a Detours hook, and the Heiti
+ * family is its Apple counterpart - PingFang SC on current systems, Heiti SC
+ * (STHeiti SC) on the older ones, with Hiragino Sans GB as the last
+ * stand-in.  The faces the primary lacks are put into its cascade list, so
+ * a rare hanzi comes from one of the others per glyph. */
+static const char* const kChineseRegular[] = {"PingFangSC-Regular", "STHeitiSC-Light", "HiraginoSansGB-W3", NULL};
+static const char* const kChineseBold[] = {"PingFangSC-Semibold", "STHeitiSC-Medium", "HiraginoSansGB-W6", NULL};
+
 // the simplified Chinese stand-in for the characters the patch font lacks
 static CTFontRef CreateChinese(int bold, CGFloat size, int* realBold)
 {
+	const char* const* names = bold ? kChineseBold : kChineseRegular;
 	CTFontRef f = NULL;
+	int i;
 	*realBold = 0;
-	if(bold && (f = CreateNamed("PingFangSC-Semibold", size)) != NULL)
-		*realBold = 1;
-	if(!f)
-		f = CreateNamed("PingFangSC-Regular", size);
+	for(i = 0; names[i] && !f; i++)
+		if((f = CreateNamed(names[i], size)) != NULL && bold)
+			*realBold = 1;
+	if(!f && bold) // no bold weight: a regular one, overstruck by the caller
+		for(i = 0; kChineseRegular[i] && !f; i++)
+			f = CreateNamed(kChineseRegular[i], size);
 	if(!f)
 		f = CreateForLanguage("zh-Hans", size);
+	if(!f)
+		return NULL;
+	// the rest of the family as the glyph cascade
+	{
+		CFMutableArrayRef cascade = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
+		if(cascade)
+		{
+			for(i = 0; names[i]; i++)
+			{
+				CTFontRef c = CreateNamed(names[i], size);
+				if(c)
+				{
+					CFArrayAppendValue(cascade, c);
+					CFRelease(c);
+				}
+			}
+			if(CFArrayGetCount(cascade) > 0)
+			{
+				const void* keys[1] = {kCTFontCascadeListAttribute};
+				const void* vals[1] = {cascade};
+				CFDictionaryRef attrs =
+					CFDictionaryCreate(NULL, keys, vals, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+				if(attrs)
+				{
+					CTFontDescriptorRef desc = CTFontDescriptorCreateWithAttributes(attrs);
+					if(desc)
+					{
+						CTFontRef withCascade = CTFontCreateCopyWithAttributes(f, size, NULL, desc);
+						if(withCascade)
+						{
+							CFRelease(f);
+							f = withCascade;
+						}
+						CFRelease(desc);
+					}
+					CFRelease(attrs);
+				}
+			}
+			CFRelease(cascade);
+		}
+	}
 	return f;
 }
 

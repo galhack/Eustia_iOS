@@ -51,6 +51,16 @@ static const EngineProfile_t kDefaultProfiles[GEN_COUNT] = {
 	{"1.69/472", GEN_1_69_472, 169, LAYOUT_C, BOOT_B},
 	{"1.494", GEN_1_494, 169, LAYOUT_C, BOOT_B},
 	{"1.529", GEN_1_529, 169, LAYOUT_C, BOOT_B},
+	/* Aiyoku no Eustia: the 1.529-level opcodes and layout (inc/bgi/version.h).
+	 * docs/RE-1520.md read the push_i32 constants of the shipped programs as
+	 * tag 8 << 25 pointers (LAYOUT_B), but the game only survives its own
+	 * save path with the 26-bit layout: with LAYOUT_B, userdata._bp's
+	 * save-buffer build-up fails at "80 9D" ring_get with an invalid pointer
+	 * ($2800D668), while LAYOUT_C writes UserData\AiyokunoEustia000.sud.
+	 * The save buffer is (500 + 1) * 0x162D4 = 45,508,836 bytes, so the
+	 * 64 MB heap limit of LAYOUT_C is also what "80 20" needs (a 32 MB limit
+	 * is a script error), which settles it.  So 1.520 is LAYOUT_C here. */
+	{"1.520", GEN_1_520, 169, LAYOUT_C, BOOT_B},
 	{"1.535", GEN_1_535, 169, LAYOUT_D, BOOT_B},
 	{"1.547", GEN_1_547, 169, LAYOUT_D, BOOT_B},
 	{"1.553", GEN_1_553, 169, LAYOUT_D, BOOT_B},
@@ -171,6 +181,7 @@ static const struct
 	{"\xe3\x82\xbf\xe3\x83\xa6\xe3\x82\xbf\xe3\x83\x9e", "1.69/451", "Tayutama"}, // タユタマ: the retail game's title string (its user-data folder)
 	{"TayutamaHD", "1.69/472", NULL},
 	{"PrismRhythm", "1.494", NULL},
+	{"AiyokunoEustia", "1.520", "AiyokunoEustia_Product"}, // Aiyoku no Eustia: "80 E8" must return the product name the boot program checks
 	{"DiamicDays", "1.529", NULL},
 	{"Gackoh_HD", "1.547", NULL},
 	{"Gackoh", "1.535", NULL},

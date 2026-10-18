@@ -34,14 +34,31 @@
 extern "C" {
 #endif
 
+/* The text encoding of the game's compiled scripts.  The original releases
+ * are Shift-JIS; a Chinese translation patch keeps the container and stores
+ * GBK.  APPLE_HOST_ENCODING_AUTO samples data01000.arc (src/core/scriptenc.c)
+ * and takes GBK or Shift-JIS from the punctuation the text uses; the forced
+ * values exist for the automatic tests and for a launcher that already knows.
+ * A game whose sample is ambiguous or unreadable stays Shift-JIS, the
+ * original's behaviour. */
+enum
+{
+	APPLE_HOST_ENCODING_AUTO = 0, // detect from the game's scripts
+	APPLE_HOST_ENCODING_SJIS = 1, // force the original Japanese decoding
+	APPLE_HOST_ENCODING_GBK = 2   // force the Chinese patch's GBK decoding
+};
+
 typedef struct AppleHostConfig
 {
 	const char* gameDir;    // the game's files (the archives, ...), a POSIX path
 	const char* overlayDir; // loose files that shadow the game directory (a translation patch), NULL for none
 	const char* saveDir;    // where UserData\ and BGI.gdb are read and written, NULL for the game directory
 	const char* fontFile;   // a font file to register before the start (the patch's font.ttf), NULL for none
-	int chinese;            // the script text is GBK (the Chinese patch) rather than Shift-JIS
+	int chinese;            /* nonzero: force GBK, whatever scriptEncoding says
+	                         * (kept as the tests' and older callers' switch); 0 with
+	                         * scriptEncoding APPLE_HOST_ENCODING_AUTO detects */
 	const char* engineArgs; // extra command-line options for Engine_Main ("--engine=1.647"), NULL for none
+	int scriptEncoding;     // APPLE_HOST_ENCODING_AUTO / _SJIS / _GBK
 } AppleHostConfig_t;
 
 /* Start the engine on its own thread with the game of `cfg` (the strings are
@@ -50,6 +67,10 @@ typedef struct AppleHostConfig
 int AppleHost_Start(const AppleHostConfig_t* cfg);
 // 1 while the engine thread runs
 int AppleHost_Running(void);
+/* The encoding the text is decoded with: APPLE_HOST_ENCODING_SJIS or _GBK;
+ * APPLE_HOST_ENCODING_AUTO while no engine has started (and no detection has
+ * run yet).  Safe to call from any thread. */
+int AppleHost_ScriptEncoding(void);
 /* Ask the engine to end as if its window's close box was pressed (the game
  * may ask for confirmation with a message box); the end handler follows. */
 void AppleHost_RequestClose(void);

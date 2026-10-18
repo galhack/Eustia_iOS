@@ -34,25 +34,36 @@ void SplitPath(const char* path, char* drive, char* dir, char* fname, char* ext)
 
 #define TEXT_SJIS 0 // code page 932
 #define TEXT_UTF8 1 // code page 65001
+/* code page 936: the GBK of a Chinese translation patch.  The original
+ * engine only ever sees the Japanese build's Shift-JIS, but a patch keeps
+ * the compiled containers and stores GBK in them; the Apple host selects
+ * this mode for such a game (inc/bgi/apple_host.h, gAppleChinese), so that
+ * the character boundaries, the punctuation sets and the bytes handed to
+ * the font back end are GBK's rather than Shift-JIS's. */
+#define TEXT_GBK  2
 
 extern int gTextUtf8; // the mode: 1 in UTF-8 mode
+extern int gTextGbk;  // the mode: 1 in GBK mode (a Chinese patch)
 
-void Text_SetEncoding(int mode); // TEXT_SJIS / TEXT_UTF8 (also told to the OS layer)
+void Text_SetEncoding(int mode); // TEXT_SJIS / TEXT_UTF8 / TEXT_GBK (the OS layer is told whether the text is UTF-8)
 
-/* the character at `s`: its byte length (1 or 2 in Shift-JIS, 1 .. 4 in
- * UTF-8; a surrogate pair written as two 3-byte sequences counts as one
+/* the character at `s`: its byte length (1 or 2 in Shift-JIS or GBK, 1 .. 4
+ * in UTF-8; a surrogate pair written as two 3-byte sequences counts as one
  * character of 6) and its code.  A NUL is a character of length 1, code 0. */
 int TextGetChar(uint32_t* out, const char* s);
 int TextCharLen(const char* s);
 #define TEXT_CHAR_MAX 8 // a buffer for one character and its terminator
 
 /* does the character occupy a full-width cell: a double-byte character in
- * Shift-JIS; anything but ASCII and the half-width katakana U+FF61 ..
- * U+FF9F in UTF-8 */
+ * Shift-JIS or GBK; anything but ASCII and the half-width katakana
+ * U+FF61 .. U+FF9F in UTF-8 */
 int TextIsWide(uint32_t code, int len);
 
 // the bytes of a code in the current encoding (no terminator); the count, 1 .. 4
 int TextPutChar(char* dst, uint32_t code);
+
+// the code of the ideographic space in the current encoding (0x8140 in Shift-JIS, 0xA1A1 in GBK, U+3000 in UTF-8)
+uint32_t TextSpaceCode(void);
 
 /* the next character of a Shift-JIS literal table (the punctuation sets of
  * the text code), as a code of the current code space; `*p` advances */

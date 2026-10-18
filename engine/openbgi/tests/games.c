@@ -71,12 +71,29 @@ static void TestDefaults(void)
 	CHECK(ProfileNamed("1.669") != NULL && ProfileNamed("1.669")->tagShift == 26 && ProfileNamed("1.669")->bootCode == 0x800000);
 	CHECK(Engine_SelectProfile("1.553") && gEngine->gen == GEN_1_553 && gEngine->compat == 169);
 	CHECK(!Engine_SelectProfile("9.99"));
+	// Aiyoku no Eustia's 1.520: an own profile whose generation takes the 1.529 set (src/vm/opset.c was edited by hand)
+	CHECK(ProfileNamed("1.520") != NULL && ProfileNamed("1.520")->gen == GEN_1_520 && ProfileNamed("1.520")->compat == 169 &&
+		ProfileNamed("1.520")->tagShift == 26 && ProfileNamed("1.520")->heapLimit == 0x4000000 && ProfileNamed("1.520")->bootCode == 0x80000 &&
+		ProfileNamed("1.520")->bootData == 0x40000);
+	{
+		int fam, op, differs = 0;
+		for(fam = 0; fam < OPFAM_COUNT; fam++)
+			for(op = 0; op < 256; op++)
+				if(((kOpSet[fam][op] >> GEN_1_520) & 1u) != ((kOpSet[fam][op] >> GEN_1_529) & 1u))
+					differs++;
+		CHECK(differs == 0); // the manual insertion of the 1.520 bit copies 1.529 exactly
+	}
 	n = gDefaultGames = Engine_GameCount();
 	CHECK(n >= 23);
 	CHECK(ProfileNamed("1.69/451") != NULL && ProfileNamed("1.69/451")->gen == GEN_1_69_451 && ProfileNamed("1.69/451")->tagShift == 25);
 	CHECK(Engine_GameAt(0, &g) && strcmp(g.match, "NurseryRhymeTrial") == 0 && strcmp(g.product, "NurseryRhyme") == 0);
 	CHECK(Engine_GameAt(1, &g) && strcmp(g.product, g.match) == 0 && strcmp(g.name, g.match) == 0 && g.directory == NULL);
 	CHECK(!Engine_GameAt(n, &g));
+	{ // the built-in Eustia entry: no games.json needed (the app's game directory is read-only)
+		static const uint8_t ipl[] = "x\0AiyokunoEustia\0more\0";
+		CHECK(Engine_DetectGame(ipl, sizeof ipl) != NULL && strcmp(gEngine->name, "1.520") == 0);
+		CHECK(strcmp(Engine_ProductName(), "AiyokunoEustia_Product") == 0);
+	}
 	// the default file reads back to the same lists
 	text = Engine_FormatGamesJson(&len);
 	CHECK(text != NULL && len > 1000 && strstr(text, "\"profiles\"") != NULL && strstr(text, "\"games\"") != NULL);

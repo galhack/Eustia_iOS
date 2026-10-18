@@ -22,9 +22,12 @@
  */
 #include "apple_internal.h"
 #include "bgi/engine.h"
+#include "bgi/scriptenc.h"
+#include "bgi/strutil.h"
 
 #include <dirent.h>
 #include <errno.h>
+#include <mach-o/dyld.h>
 #include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -33,6 +36,7 @@ char gAppleGameDir[1024];
 char gAppleOverlayDir[1024];
 char gAppleSaveDir[1024];
 int gAppleChinese;
+static int gAppleScriptEncoding = APPLE_HOST_ENCODING_AUTO; // the encoding the text is decoded with
 
 static char gFontFile[1024];
 static char gEngineArgs[512];
@@ -110,6 +114,34 @@ static const char* OverlayFind(const char* name)
 	return NULL;
 }
 
+// ---- the text encoding --------------------------------------------------------------------
+
+/* The encoding the game's text is decoded with (inc/bgi/apple_host.h): the
+ * cfg's forced value, else GBK when the legacy `chinese` switch is set, else
+ * a sample of the scripts (src/core/scriptenc.c).  An unreadable or
+ * ambiguous sample stays Shift-JIS, the original's behaviour.  Sets
+ * gAppleChinese for the font backend and says what was found on stderr. */
+static void ChooseScriptEncoding(const AppleHostConfig_t* cfg)
+{
+	const char* how = "forced";
+	gAppleScriptEncoding = cfg->scriptEncoding;
+	if(gAppleScriptEncoding != APPLE_HOST_ENCODING_GBK && gAppleScriptEncoding != APPLE_HOST_ENCODING_SJIS)
+		gAppleScriptEncoding = APPLE_HOST_ENCODING_AUTO;
+	if(gAppleScriptEncoding == APPLE_HOST_ENCODING_AUTO)
+	{
+		if(cfg->chinese)
+			gAppleScriptEncoding = APPLE_HOST_ENCODING_GBK;
+		else
+		{
+			ScriptEncoding_t e = ScriptEncoding_Detect(gAppleGameDir);
+			gAppleScriptEncoding = e == SCRIPTENC_GBK ? APPLE_HOST_ENCODING_GBK : APPLE_HOST_ENCODING_SJIS;
+			how = e == SCRIPTENC_UNKNOWN ? "not recognized, assuming Shift-JIS" : "detected";
+		}
+	}
+	gAppleChinese = gAppleScriptEncoding == APPLE_HOST_ENCODING_GBK;
+	fprintf(stderr, "bgi: script text is %s (%s)\n", gAppleChinese ? "GBK, the Chinese patch" : "Shift-JIS, the original", how);
+}
+
 // ---- the redirection --------------------------------------------------------------------------
 
 // 1 for the paths that belong to the player: UserData and everything below it, BGI.gdb
@@ -182,19 +214,53 @@ static void PrepareSaveDir(void)
 
 // ---- the engine thread --------------------------------------------------------------------------
 
+// the path of the executable (the binary directory the engine probes for games.json); 0 when unknown
+static int AppleHost_ExecutablePath(char* out, size_t n)
+{
+#if defined(__APPLE__)
+	char path[0x1000];
+	uint32_t size = sizeof path;
+	if(_NSGetExecutablePath(path, &size) != 0)
+		return 0;
+	if(n <= strlen(path))
+		return 0;
+	snprintf(out, n, "%s", path);
+	return 1;
+#else
+	BGI_UNUSED(out);
+	BGI_UNUSED(n);
+	return 0;
+#endif
+}
+
 static void* EngineThread(void* arg)
 {
 	char cmd[0x400];
+	char exe[0x400];
 	int r = -1;
 	BGI_UNUSED(arg);
 	if(chdir(gAppleGameDir) == 0)
 	{
-		OS_SetArgv0("bgi");
+		/* the binary directory is the executable's, not the game's: the
+		 * engine probes it for games.json and would otherwise find the
+		 * game directory (it is the current one here) */
+		if(AppleHost_ExecutablePath(exe, sizeof exe))
+			OS_SetArgv0(exe);
+		else
+			OS_SetArgv0("bgi");
+		/* the game directory belongs to the player and is read-only on a
+		 * device: never write the default games.json into it (the built-in
+		 * profiles and games are used in memory; engine.c "BGI_NO_GAMES_JSON") */
+		setenv("BGI_NO_GAMES_JSON", "1", 1);
 		if(OS_Init())
 		{
 			gPosixPathRedirect = Redirect;
 			if(gFontFile[0])
 				AppleFont_Register(gFontFile);
+			/* the engine's text layer splits strings and picks line-break
+			 * characters by the script text's encoding; the font back end
+			 * already decodes by gAppleChinese */
+			Text_SetEncoding(gAppleChinese ? TEXT_GBK : TEXT_SJIS);
 			snprintf(cmd, sizeof cmd, "%s", gEngineArgs);
 			r = Engine_Main(cmd);
 			OS_Shutdown();
@@ -217,7 +283,7 @@ int AppleHost_Start(const AppleHostConfig_t* cfg)
 	SetDir(gAppleSaveDir, sizeof gAppleSaveDir, cfg->saveDir);
 	snprintf(gFontFile, sizeof gFontFile, "%s", cfg->fontFile ? cfg->fontFile : "");
 	snprintf(gEngineArgs, sizeof gEngineArgs, "%s", cfg->engineArgs ? cfg->engineArgs : "");
-	gAppleChinese = cfg->chinese != 0;
+	ChooseScriptEncoding(cfg);
 	OverlayLoad();
 	PrepareSaveDir();
 	AppleWindow_Reset();
@@ -244,6 +310,11 @@ int AppleHost_Start(const AppleHostConfig_t* cfg)
 int AppleHost_Running(void)
 {
 	return gRunning;
+}
+
+int AppleHost_ScriptEncoding(void)
+{
+	return gAppleScriptEncoding;
 }
 
 void AppleHost_RequestClose(void)

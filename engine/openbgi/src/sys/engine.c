@@ -256,7 +256,10 @@ void Engine_Shutdown(void)
 //                      of detecting the game; BGI_ENGINE=NAME does the same
 //   --games=PATH       the games.json to detect the game with (default: the
 //                      game directory's own, else the one next to the
-//                      executable, written there when missing; BGI_GAMES=PATH)
+//                      executable, written there when missing; BGI_GAMES=PATH;
+//                      BGI_NO_GAMES_JSON=1 keeps the default one from being
+//                      written - the Apple host sets it: an app's game
+//                      directory is read-only and never belongs to us)
 //   --enable=FAM:OP    make an opcode available regardless of the profile
 //   --disable=FAM:OP   remove one ("80:63", "main:7E")
 //   --list-engines     print the profiles and exit
@@ -393,7 +396,12 @@ static void Engine_LoadGames(void)
 	if(Engine_LoadGamesJson(path))
 		return;
 	Engine_ResetGames(); // a file that failed to parse may have replaced nothing or everything: start clean
-	Engine_SaveGamesJson(path);
+	/* The default games.json is a convenience for the desktop launcher: with
+	 * BGI_NO_GAMES_JSON set (the Apple host, whose game directory is
+	 * read-only and must not be filled) the built-in profiles and games are
+	 * used in memory and nothing is written. */
+	if(!getenv("BGI_NO_GAMES_JSON") || !*getenv("BGI_NO_GAMES_JSON"))
+		Engine_SaveGamesJson(path);
 }
 
 /* Choose the engine profile: the boot program (ipl._bp) is read and

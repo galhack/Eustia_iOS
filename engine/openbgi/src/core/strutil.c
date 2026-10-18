@@ -44,20 +44,30 @@ static const char kKinsoku[] =
 	"\x81\x6a\x81\x6c\x81\x6e\x81\x70\x81\x72\x81\x74\x81\x76\x81\x78\x81\x7a" // ）〕］｝〉》」』】 (full-width closing brackets)
 	"\x81\x66\x81\x68";                                                        // ’ ” (closing single and double quotation marks)
 
+/* the same set in GBK (a Chinese patch's text), as the two-byte codes of
+ * code page 936: 、。，．：；？！ and the closing brackets and quotation
+ * marks */
+static const char kKinsokuGbk[] =
+	",.:;?!"
+	"\xa1\xa2\xa1\xa3\xa3\xac\xa3\xae\xa3\xba\xa3\xbb\xa3\xbf\xa3\xa1" // 、。，．：；？！
+	"\xa1\xaf\xa1\xb1"                                                 // ’ ”
+	"\xa1\xb3\xa1\xb5\xa1\xb7\xa1\xb9\xa1\xbb\xa1\xbd\xa1\xbf"         // 〕〉》」』〗】
+	"\xa3\xa9\xa3\xc3\xa3\xc9";                                        // ）］｝
+
 // 1 when `ch` (a TextGetChar code) is in the kinsoku set
 int IsKinsokuChar(uint32_t ch)
 {
 	// the table in the current code space, rebuilt when the encoding changes
 	static uint32_t codes[64];
 	static int count = 0, mode = -1;
-	int i;
-	if(mode != gTextUtf8)
+	int i, m = (gTextUtf8 ? 1 : 0) | (gTextGbk ? 2 : 0);
+	if(mode != m)
 	{
-		const char* p = kKinsoku;
+		const char* p = gTextGbk ? kKinsokuGbk : kKinsoku;
 		count = 0;
 		while(*p && count < (int)BGI_COUNTOF(codes))
 			codes[count++] = TextTableChar(&p);
-		mode = gTextUtf8;
+		mode = m;
 	}
 	for(i = 0; i < count; i++)
 		if(codes[i] == ch)
@@ -220,11 +230,18 @@ void SplitPath(const char* path, char* drive, char* dir, char* fname, char* ext)
 // ---- the text encoding -------------------------------------------------------------
 
 int gTextUtf8;
+int gTextGbk;
 
-// "81 00": select TEXT_SJIS or TEXT_UTF8 for the script text; the OS layer follows (window titles, message boxes, font rendering)
+/* "81 00": select TEXT_SJIS or TEXT_UTF8 for the script text; the OS layer
+ * follows (window titles, message boxes, font rendering).  The Apple host
+ * selects TEXT_GBK before the engine starts when the game's scripts are a
+ * Chinese patch's (inc/bgi/scriptenc.h): the OS layer's font back end is
+ * told by its own "chinese" switch there, the engine just needs the
+ * character boundaries and the punctuation sets of code page 936. */
 void Text_SetEncoding(int mode)
 {
 	gTextUtf8 = mode == TEXT_UTF8;
+	gTextGbk = mode == TEXT_GBK;
 	OS_SetTextEncoding(gTextUtf8);
 }
 
@@ -252,9 +269,9 @@ static int Utf8Decode(uint32_t* out, const char* s)
 
 /* The character at s decoded as `mode` says: TEXT_RAW takes one byte as
  * it is, TEXT_UTF8 one sequence (a surrogate pair written as two
- * sequences is joined), TEXT_SJIS one or two bytes.  *out receives the
- * code, *wide (when given) whether it occupies a full-width cell (as
- * TextIsWide); the byte length is returned. */
+ * sequences is joined), TEXT_SJIS and TEXT_GBK one or two bytes.  *out
+ * receives the code, *wide (when given) whether it occupies a full-width
+ * cell (as TextIsWide); the byte length is returned. */
 int TextGetCharMode(uint32_t* out, int* wide, const char* s, uint32_t mode)
 {
 	uint32_t c;
@@ -286,6 +303,23 @@ int TextGetCharMode(uint32_t* out, int* wide, const char* s, uint32_t mode)
 			*wide = c >= 0x80 && !(c >= 0xff61 && c < 0xffa0);
 		return len;
 	}
+	if(mode == TEXT_GBK)
+	{
+		/* GBK: a lead byte 0x81 .. 0xFE followed by a trail byte
+		 * 0x40 .. 0xFE (0x7F excluded); anything else is a single byte */
+		uint8_t lead = (uint8_t)s[0], trail = (uint8_t)s[1];
+		if(lead >= 0x81 && trail >= 0x40 && trail <= 0xfe && trail != 0x7f)
+		{
+			*out = (uint32_t)lead << 8 | trail;
+			if(wide)
+				*wide = 1;
+			return 2;
+		}
+		*out = lead;
+		if(wide)
+			*wide = 0;
+		return 1;
+	}
 	len = SjisGetChar(&c, s) ? 2 : 1;
 	*out = c;
 	if(wide)
@@ -296,7 +330,7 @@ int TextGetCharMode(uint32_t* out, int* wide, const char* s, uint32_t mode)
 // the character at s in the current encoding: its code and byte length
 int TextGetChar(uint32_t* out, const char* s)
 {
-	return TextGetCharMode(out, NULL, s, gTextUtf8 ? TEXT_UTF8 : TEXT_SJIS);
+	return TextGetCharMode(out, NULL, s, gTextUtf8 ? TEXT_UTF8 : gTextGbk ? TEXT_GBK : TEXT_SJIS);
 }
 
 // the byte length of the character at s in the current encoding
@@ -354,6 +388,12 @@ int TextPutChar(char* dst, uint32_t code)
 	return 4;
 }
 
+// the code of the ideographic space in the current encoding
+uint32_t TextSpaceCode(void)
+{
+	return gTextUtf8 ? 0x3000 : gTextGbk ? 0xa1a1 : 0x8140;
+}
+
 /* the next character of a Shift-JIS literal (the punctuation tables of
  * the text code) as a code of the current code space: in UTF-8 mode a
  * double-byte character is converted to its code point and a half-width
@@ -361,7 +401,14 @@ int TextPutChar(char* dst, uint32_t code)
 uint32_t TextTableChar(const char** p)
 {
 	uint32_t c;
-	int dbcs = SjisGetChar(&c, *p);
+	int dbcs;
+	if(gTextGbk)
+	{ // the tables of a GBK game are GBK byte pairs
+		int len = TextGetCharMode(&c, NULL, *p, TEXT_GBK);
+		*p += len;
+		return c;
+	}
+	dbcs = SjisGetChar(&c, *p);
 	*p += dbcs ? 2 : 1;
 	if(gTextUtf8)
 	{

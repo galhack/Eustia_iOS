@@ -191,8 +191,7 @@ int Text_LayoutCoreH(RichState_t* rich, int32_t* outLines, const char* str, int 
 			// a space that would end the line is dropped with a line break
 			// instead, unless the one before it was a space too
 			int spaceW = dbcs ? cw : cw / 2;
-			const char* sp = MSG_TXT_BRACKET_SPACE;
-			if((code == 0x20 || code == TextTableChar(&sp)) && pos >= len &&
+			if((code == 0x20 || code == TextSpaceCode()) && pos >= len &&
 				memcmp(str + pos - len, p, (size_t)len) != 0 && cur[0] + spaceW > area->r - size + 1)
 			{
 				lineStart = 1;

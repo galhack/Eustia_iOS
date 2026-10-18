@@ -17,12 +17,15 @@
  *     --overlay=DIR      loose files shadowing the game (a translation patch)
  *     --font=FILE        a font file to register (the patch's font.ttf)
  *     --save=DIR         the save directory (UserData, BGI.gdb)
- *     --chinese          the script text is GBK
+ *     --chinese          force GBK (the Chinese patch); without it the encoding
+ *                        is detected from the game's data01000.arc
+ *     --sjis             force Shift-JIS (the original)
  *     --args="..."       options for Engine_Main
  *     --movie=ARC:NAME   no engine: play the movie NAME of the archive ARC
  *                        through the back end's player (OS_MovieOpenRange)
  *                        and write a picture of it every second as
- *                        movieN.png in the current directory
+ *                        movieN.png in the current directory (--size=WxH
+ *                        sets the picture rectangle, default 1280x720)
  *
  * The pictures are written as PNG through ImageIO, with the movie frame
  * drawn over the window image when a movie plays.
@@ -41,6 +44,7 @@
 #include <unistd.h>
 
 static volatile int gEnded = -1000;
+static int gMovieW = 1280, gMovieH = 720; // the --movie picture rectangle (--size)
 
 static void OnEnd(int code)
 {
@@ -125,27 +129,35 @@ static const char* Opt(int argc, char** argv, const char* name)
 	return NULL;
 }
 
-// the absolute offset and size of `name` in a BURIKO ARC20 archive; 1 when found
+/* The absolute offset and size of `name` in the archive `arc` (a BURIKO
+ * ARC20, 0x80-byte records with 0x60-byte names, or a PackFile, 32-byte
+ * records with 16-byte names); 1 when found. */
 static int ArcFind(const char* arc, const char* name, uint32_t* off, uint32_t* size)
 {
 	FILE* f = fopen(arc, "rb");
 	uint8_t hdr[16], e[0x80];
-	uint32_t n, i;
+	uint32_t n, i, rec, nameLen, base;
 	int found = 0;
 	if(!f)
 		return 0;
-	if(fread(hdr, 1, 16, f) == 16 && memcmp(hdr, "BURIKO ARC20", 12) == 0)
+	if(fread(hdr, 1, 16, f) != 16 ||
+		(memcmp(hdr, "BURIKO ARC20", 12) != 0 && memcmp(hdr, "PackFile    ", 12) != 0))
 	{
-		n = hdr[12] | hdr[13] << 8 | hdr[14] << 16 | (uint32_t)hdr[15] << 24;
-		for(i = 0; i < n && fread(e, 1, 0x80, f) == 0x80; i++)
-			if(strcasecmp((const char*)e, name) == 0)
-			{
-				*off = 16 + n * 0x80 + (e[0x60] | e[0x61] << 8 | e[0x62] << 16 | (uint32_t)e[0x63] << 24);
-				*size = e[0x64] | e[0x65] << 8 | e[0x66] << 16 | (uint32_t)e[0x67] << 24;
-				found = 1;
-				break;
-			}
+		fclose(f);
+		return 0;
 	}
+	rec = memcmp(hdr, "BURIKO ARC20", 12) == 0 ? 0x80 : 0x20;
+	nameLen = rec == 0x80 ? 0x60 : 16;
+	n = hdr[12] | hdr[13] << 8 | hdr[14] << 16 | (uint32_t)hdr[15] << 24;
+	base = 16 + n * rec;
+	for(i = 0; i < n && fread(e, 1, rec, f) == rec; i++)
+		if(strncasecmp((const char*)e, name, nameLen) == 0 && strlen(name) <= nameLen)
+		{
+			*off = base + (e[nameLen] | e[nameLen + 1] << 8 | e[nameLen + 2] << 16 | (uint32_t)e[nameLen + 3] << 24);
+			*size = e[nameLen + 4] | e[nameLen + 5] << 8 | e[nameLen + 6] << 16 | (uint32_t)e[nameLen + 7] << 24;
+			found = 1;
+			break;
+		}
 	fclose(f);
 	return found;
 }
@@ -179,7 +191,9 @@ static int MovieTest(const char* spec, double seconds)
 	fprintf(stderr, "hosttest: open %s at %u (%u bytes): %d\n", colon + 1, off, size, r);
 	if(r != OS_MOVIE_OK && r != OS_MOVIE_AUDIO_NOT_RENDERED)
 		return 1;
-	if(!OS_MovieStart(0, 0, 1280, 960, 0, &length))
+	/* the picture rectangle: the game's client size by default (Aiyoku no
+	 * Eustia is 1280 x 720), or --size=WxH for another game */
+	if(!OS_MovieStart(0, 0, gMovieW, gMovieH, 0, &length))
 		return 1;
 	fprintf(stderr, "hosttest: length %d ms\n", (int)length);
 	for(i = 1; i <= (int)seconds; i++)
@@ -230,17 +244,26 @@ int main(int argc, char** argv)
 	if(argc < 2)
 	{
 		fprintf(stderr, "usage: %s GAME_DIR [--seconds=N] [--script=...] [--shot=FILE] [--overlay=DIR] [--font=FILE]"
-		                " [--save=DIR] [--chinese] [--args=...]\n", argv[0]);
+		                " [--save=DIR] [--chinese|--sjis] [--args=...]\n", argv[0]);
 		return 2;
 	}
 	if(Opt(argc, argv, "--movie"))
+	{
+		const char* sz = Opt(argc, argv, "--size");
+		if(sz && sscanf(sz, "%dx%d", &gMovieW, &gMovieH) != 2)
+			fprintf(stderr, "hosttest: bad --size (expected WxH)\n");
 		return MovieTest(Opt(argc, argv, "--movie"), secs ? atof(secs) : 5);
+	}
 	memset(&cfg, 0, sizeof cfg);
 	cfg.gameDir = argv[1];
 	cfg.overlayDir = Opt(argc, argv, "--overlay");
 	cfg.fontFile = Opt(argc, argv, "--font");
 	cfg.saveDir = Opt(argc, argv, "--save");
 	cfg.chinese = Opt(argc, argv, "--chinese") != NULL;
+	// the text encoding: detected from the game's scripts unless a test forces it
+	cfg.scriptEncoding = Opt(argc, argv, "--chinese")    ? APPLE_HOST_ENCODING_GBK
+						 : Opt(argc, argv, "--sjis") ? APPLE_HOST_ENCODING_SJIS
+													 : APPLE_HOST_ENCODING_AUTO;
 	cfg.engineArgs = Opt(argc, argv, "--args");
 	AppleHost_SetEndHandler(OnEnd);
 	AppleHost_SetMessageBoxHandler(OnMessageBox);

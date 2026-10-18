@@ -46,6 +46,16 @@ typedef enum EngineGen
 	GEN_1_69_472, // TayutamaHD
 	GEN_1_494,    // PrismRhythm
 	GEN_1_529,    // DiamicDays
+	/* Aiyoku no Eustia 1.520.6, placed after 1.529 on purpose: the
+	 * original 1.520.6 build lacks the whole "81" family (its own
+	 * BGIError.txt reports the shipped boot program dying on $8160), but
+	 * this release's data uses 81 60 set_size_entry and 90 06
+	 * set_proj_centre, which the opcode survey records from 1.529 on,
+	 * and every opcode its programs use is defined by the 1.529 set.  So
+	 * the generation takes the 1.529 opcode set and the 1.529 behaviour
+	 * gates; only its profile has a name of its own.  See
+	 * engine/PORTING-1520.md. */
+	GEN_1_520,    // AiyokunoEustia (1.529-level opcodes and gates)
 	GEN_1_535,    // Gackoh
 	GEN_1_547,    // Gackoh_HD
 	GEN_1_553,    // Heptagram
