@@ -1,55 +1,64 @@
 import Foundation
 import SwiftUI
 
-/// The launcher's state: where the game is, which languages it can run in,
-/// the unpacking of the Chinese patch and the running engine.
+/// The launcher's state: where the game data is, how it is encoded, and the
+/// running engine.
 @MainActor
 final class AppModel: ObservableObject {
     enum Phase: Equatable {
         case launcher
-        case preparing(String)
         case playing
         case ended(Int32)
     }
 
     @Published var phase: Phase = .launcher
     @Published var gameFolder: URL?
-    @Published var hasChinesePatch = false
-    @Published var overlayReady = false
-    @Published var progress: Double = 0
+    @Published var isComplete = false
+    @Published var missingFiles: [String] = []
+    @Published var archiveCount = 0
+    @Published var detectedEncoding: ScriptEncoding = .unknown
+    @Published var language: GameLanguage = .chinese
     @Published var errorMessage: String?
-    @AppStorage("language") var languageRaw: String = GameLanguage.chinese.rawValue
+    @Published var importing = false
+    @Published var importStatus = ""
 
     let transfer = TransferServer()
 
-    var language: GameLanguage {
-        get { GameLanguage(rawValue: languageRaw) ?? .japanese }
-        set { languageRaw = newValue.rawValue }
-    }
+    /// The detection reads a few megabytes of the script archive: run it off
+    /// the main thread and drop the result if the folder changed meanwhile.
+    private var detectionToken = 0
+    /// True once the player has chosen a language for themselves; the
+    /// automatic detection only sets the default.
+    private var playerChoseLanguage = false
 
     init() {
+        if let raw = UserDefaults.standard.string(forKey: "language"), let saved = GameLanguage(rawValue: raw) {
+            language = saved
+            playerChoseLanguage = true
+        }
         transfer.onFileReceived = { [weak self] in
             Task { @MainActor in self?.refresh() }
         }
         refresh()
         DebugScript.redirectLogIfRequested()
-        if let lang = DebugScript.autostart {
-            language = lang
-            DispatchQueue.main.async { self.start() }
+        if let autostart = DebugScript.autostart {
+            language = autostart
+            playerChoseLanguage = true
+            DispatchQueue.main.async { [weak self] in self?.start() }
         }
     }
 
-    /// The game folder the player picked (Mac): remembered for the next launches.
-    func choose(folder: URL) {
-        let accessing = folder.startAccessingSecurityScopedResource()
-        defer { if accessing { folder.stopAccessingSecurityScopedResource() } }
-        if GamePaths.isGameFolder(folder) {
-            GamePaths.chosenGameFolder = folder
-            errorMessage = nil
-        } else {
-            errorMessage = "这个文件夹里没有 sysprg.arc 和 system.arc，请选择游戏的安装目录。"
+    /// The automatic detection's summary shown by the launcher.
+    var detectionNote: String {
+        guard gameFolder != nil else { return "" }
+        if let detected = detectedEncoding.language, detected == language {
+            return "自动识别：\(detectedEncoding.title)"
         }
-        refresh()
+        switch detectedEncoding {
+        case .gbk: return "自动识别：简体中文（GBK 汉化脚本）"
+        case .shiftJIS: return "自动识别：日本語（Shift-JIS 原版脚本）"
+        case .unknown: return "未能自动识别脚本编码，请按游戏版本选择语言。"
+        }
     }
 
     /// Coming back to the front: files may have been copied in meanwhile.
@@ -57,115 +66,136 @@ final class AppModel: ObservableObject {
         if phase == .launcher { refresh() }
     }
 
-    /// Look for the game files and the patch again (after a copy or a transfer).
+    /// Look for the game data and its encoding again (after a copy, a network
+    /// transfer, or the player pointing at another folder).
     func refresh() {
-        gameFolder = GamePaths.findGameFolder()
-        if let folder = gameFolder {
-            hasChinesePatch = GamePaths.fileExists(named: "BGI-CHS.exe", in: folder) || overlayIsCurrent(for: folder)
-            overlayReady = overlayIsCurrent(for: folder)
+        let found = GamePaths.findGameFolder()
+        gameFolder = found
+        if let folder = found {
+            isComplete = GamePaths.isCompleteGameFolder(folder)
+            missingFiles = GamePaths.missingFiles(in: folder)
+            archiveCount = GamePaths.archiveCount(in: folder)
+            detectEncoding(of: folder)
         } else {
-            hasChinesePatch = false
-            overlayReady = false
-        }
-        if !hasChinesePatch && language == .chinese && gameFolder != nil {
-            language = .japanese
-        }
-    }
-
-    /// The unpacked patch matches the BGI-CHS.exe of this folder (size and date recorded at unpacking).
-    private func overlayIsCurrent(for folder: URL) -> Bool {
-        let marker = GamePaths.chineseOverlay.appendingPathComponent(".source")
-        guard let recorded = try? String(contentsOf: marker, encoding: .utf8) else { return false }
-        guard let exe = GamePaths.file(named: "BGI-CHS.exe", in: folder) else {
-            return true // the patch was unpacked earlier and the executable removed since: keep using it
-        }
-        return recorded == Self.signature(of: exe)
-    }
-
-    private static func signature(of url: URL) -> String {
-        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-        let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
-        let date = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        return "\(size)-\(Int(date))"
-    }
-
-    func start() {
-        guard let folder = gameFolder else { return }
-        errorMessage = nil
-        if language == .chinese && !overlayReady {
-            unpackChinesePatch(folder: folder)
-            return
-        }
-        launch(folder: folder)
-    }
-
-    private func launch(folder: URL) {
-        let overlay = language == .chinese ? GamePaths.chineseOverlay : nil
-        EngineBridge.onEnd = { [weak self] code in
-            self?.phase = .ended(code)
-        }
-        transfer.stop()
-        if EngineBridge.start(gameFolder: folder, language: language, overlay: overlay) {
-            phase = .playing
-            DebugScript.runIfRequested()
-        } else {
-            errorMessage = "游戏引擎无法启动：请确认游戏文件完整。"
-            phase = .launcher
+            isComplete = false
+            missingFiles = GamePaths.requiredFiles
+            archiveCount = 0
+            detectedEncoding = .unknown
+            detectionToken += 1
         }
     }
 
-    /// Unpack BGI-CHS.exe's virtual file system (the translated scripts and pictures).
-    private func unpackChinesePatch(folder: URL) {
-        guard let exe = GamePaths.file(named: "BGI-CHS.exe", in: folder) else {
-            errorMessage = "没有找到 BGI-CHS.exe，无法使用汉化。"
-            return
-        }
-        phase = .preparing("正在解开汉化补丁…")
-        progress = 0
-        let out = GamePaths.chineseOverlay
-        let signature = Self.signature(of: exe)
-        Task.detached(priority: .userInitiated) {
-            try? FileManager.default.removeItem(at: out)
-            var err = [CChar](repeating: 0, count: 256)
-            let box = await ProgressBox(model: self)
-            let count = withExtendedLifetime(box) {
-                Evb_Extract(exe.path, out.path, { user, done, total in
-                    let box = Unmanaged<ProgressBox>.fromOpaque(user!).takeUnretainedValue()
-                    let fraction = total > 0 ? Double(done) / Double(total) : 0
-                    box.report(fraction)
-                    return 1
-                }, Unmanaged.passUnretained(box).toOpaque(), &err, err.count)
-            }
-            let message = String(cString: err)
-            await MainActor.run {
-                if count > 0 {
-                    try? signature.write(to: out.appendingPathComponent(".source"), atomically: true, encoding: .utf8)
-                    self.overlayReady = true
-                    self.launch(folder: folder)
-                } else {
-                    self.errorMessage = "汉化补丁解包失败：\(message)"
-                    self.phase = .launcher
+    private func detectEncoding(of folder: URL) {
+        detectionToken += 1
+        let token = detectionToken
+        Task.detached(priority: .utility) {
+            let encoding = ScriptInspector.detect(in: folder)
+            await MainActor.run { [weak self] in
+                guard let self, self.detectionToken == token else { return }
+                self.detectedEncoding = encoding
+                if !self.playerChoseLanguage, let detected = encoding.language {
+                    self.language = detected
                 }
             }
         }
     }
 
-    /// Back to the launcher after the engine ended: the engine cannot run twice
-    /// in one process, so the app quits when the player asks to play again.
+    /// The language picker: the player's choice wins over the detection from
+    /// then on.
+    func selectLanguage(_ newValue: GameLanguage) {
+        language = newValue
+        playerChoseLanguage = true
+        UserDefaults.standard.set(newValue.rawValue, forKey: "language")
+    }
+
+    /// A folder chosen in the Files app / folder picker.  On the Mac the game
+    /// plays where it is (`选择游戏目录…`); a device gets a copy in Documents.
+    func pickGameFolder(_ url: URL) {
+        #if targetEnvironment(macCatalyst)
+        chooseGameFolderInPlace(url)
+        #else
+        importFolder(url)
+        #endif
+    }
+
+    /// Play a folder where it is (Mac; the folder may be read-only).
+    func chooseGameFolderInPlace(_ url: URL) {
+        GamePaths.storeChosenGameFolder(url)
+        refresh()
+        if gameFolder == nil {
+            errorMessage = "这个目录里没有找到游戏数据：需要 system.arc、sysprg.arc、sysgrp.arc 和 data01000.arc。"
+        } else {
+            errorMessage = nil
+        }
+    }
+
+    /// Copy a folder into Documents.  Used by `从「文件」导入…` on every
+    /// platform and by `选择游戏目录…` on a device.
+    func importFolder(_ url: URL) {
+        guard !importing else { return }
+        importing = true
+        importStatus = "正在复制「\(url.lastPathComponent)」…"
+        errorMessage = nil
+        Task.detached(priority: .userInitiated) {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let result = Result { try GameImport.copy(url, into: GamePaths.importTarget) }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.importing = false
+                self.importStatus = ""
+                switch result {
+                case .success(let target):
+                    self.refresh()
+                    if self.gameFolder == nil {
+                        self.errorMessage = "已复制「\(target.lastPathComponent)」，但里面没有找到 game data（system.arc / sysprg.arc / sysgrp.arc / data01000.arc）。"
+                    }
+                case .failure(let error):
+                    self.errorMessage = "导入失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// What the engine should do about the script encoding: the player's
+    /// choice or the detection wins; with no hint at all, the engine samples
+    /// the scripts itself (its automatic GBK/Shift-JIS detection).
+    var engineScriptMode: EngineBridge.ScriptMode {
+        if playerChoseLanguage || detectedEncoding.language != nil {
+            return .forced(language)
+        }
+        return .auto
+    }
+
+    /// Start the engine on the found folder.  It cannot run twice in one
+    /// process, so after it ends the app offers to quit (the player relaunches).
+    func start() {
+        guard let folder = gameFolder else {
+            errorMessage = "还没有找到游戏数据，请先选择或导入游戏目录。"
+            return
+        }
+        guard isComplete else {
+            errorMessage = "游戏数据不完整（缺少：\(missingFiles.joined(separator: "、"))），请重新导入完整的游戏目录。"
+            return
+        }
+        guard !importing else { return }
+        errorMessage = nil
+        EngineBridge.onEnd = { [weak self] code in
+            self?.phase = .ended(code)
+        }
+        transfer.stop()
+        if EngineBridge.start(gameFolder: folder, scriptMode: engineScriptMode) {
+            phase = .playing
+            DebugScript.runIfRequested()
+        } else {
+            errorMessage = "游戏引擎无法启动：请确认该目录中的游戏文件完整（system.arc、sysprg.arc、sysgrp.arc、data01000.arc）。"
+            phase = .launcher
+        }
+    }
+
+    /// Back to the launcher after the engine ended; the engine cannot run
+    /// twice in one process, so the app quits when the player asks to play again.
     func quitApp() {
         exit(0)
-    }
-}
-
-/// Carries the unpacker's progress from its C callback to the model.
-private final class ProgressBox: @unchecked Sendable {
-    private weak var model: AppModel?
-
-    @MainActor init(model: AppModel) {
-        self.model = model
-    }
-
-    func report(_ fraction: Double) {
-        Task { @MainActor in self.model?.progress = fraction }
     }
 }

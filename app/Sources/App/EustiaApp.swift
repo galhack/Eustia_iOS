@@ -2,7 +2,7 @@ import AVFoundation
 import SwiftUI
 
 @main
-struct SubahibiApp: App {
+struct EustiaApp: App {
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -51,8 +51,6 @@ struct RootView: View {
             GameView()
                 .ignoresSafeArea()
                 .persistentSystemOverlays(.hidden)
-        case .preparing(let message):
-            ProgressScreen(message: message, progress: model.progress)
         case .ended:
             EndedScreen()
         case .launcher:
@@ -66,27 +64,15 @@ struct GameView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: GameViewController, context: Context) {}
 }
 
-struct ProgressScreen: View {
-    let message: String
-    let progress: Double
-
-    var body: some View {
-        VStack(spacing: 24) {
-            Text(message).font(.title2)
-            ProgressView(value: progress).frame(maxWidth: 480)
-            Text("\(Int(progress * 100))%").monospacedDigit().foregroundStyle(.secondary)
-        }
-        .padding(48)
-    }
-}
-
 struct EndedScreen: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
         VStack(spacing: 24) {
             Text("游戏已结束").font(.largeTitle)
-            Text("再次游玩请重新打开本应用。").foregroundStyle(.secondary)
+            Text("同一进程内引擎无法再次启动，再次游玩请重新打开本应用。")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             Button("退出") { model.quitApp() }
                 .buttonStyle(.borderedProminent)
         }

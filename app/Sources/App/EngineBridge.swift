@@ -4,8 +4,13 @@ import Foundation
 import UIKit
 #endif
 
-/// The Swift side of engine/openbgi/inc/bgi/apple_host.h: starting the
-/// engine thread and answering what it asks the application.
+/// The Swift side of engine/openbgi/inc/bgi/apple_host.h: starting the engine
+/// thread and answering what it asks the application.
+///
+/// The engine detects the game by the archives in `gameFolder` (there is no
+/// `games.json` written into the player's data: the game folder may be
+/// read-only).  The audio, font and window back ends are the engine's own
+/// (os/apple/); the only switch the shell sets is the script text encoding.
 enum EngineBridge {
     /// Called on the main thread when the engine has returned (the player
     /// chose to quit, or it failed to start its game).
@@ -15,7 +20,38 @@ enum EngineBridge {
     /// installed by the game screen, called on the main thread.
     static var presentMessageBox: ((String, String, UInt32, @escaping (Int32) -> Void) -> Void)?
 
-    static func start(gameFolder: URL, language: GameLanguage, overlay: URL?) -> Bool {
+    /// Extra command line for Engine_Main, for diagnostics; normally none
+    /// (the engine's own game detection and the defaults decide).
+    static var engineArguments: String? {
+        ProcessInfo.processInfo.environment["EUSTIA_ENGINE_ARGS"]
+    }
+
+    /// How the engine should decode the script text (apple_host.h).
+    enum ScriptMode {
+        /// Let the engine sample data01000.arc itself (APPLE_HOST_ENCODING_AUTO).
+        case auto
+        /// Decode as the given language's encoding (GBK or Shift-JIS).
+        case forced(GameLanguage)
+
+        var scriptEncoding: Int32 {
+            switch self {
+            case .auto: return 0   // APPLE_HOST_ENCODING_AUTO
+            case .forced(.chinese): return 2   // APPLE_HOST_ENCODING_GBK
+            case .forced(.japanese): return 1  // APPLE_HOST_ENCODING_SJIS
+            }
+        }
+
+        var chinese: Int32 {
+            if case .forced(.chinese) = self { return 1 }
+            return 0
+        }
+    }
+
+    /// Start the engine on its game folder.  Saves and `BGI.gdb` go to
+    /// Application Support/Eustia/save; the engine seeds `BGI.gdb` from the
+    /// game folder on the first run.  No overlay, font or patch executable is
+    /// needed for this game: the Chinese patch is already applied to the data.
+    static func start(gameFolder: URL, scriptMode: ScriptMode) -> Bool {
         AppleHost_SetEndHandler { code in
             DispatchQueue.main.async { EngineBridge.onEnd?(code) }
         }
@@ -24,19 +60,19 @@ enum EngineBridge {
                                          caption: caption.map { String(cString: $0) } ?? "",
                                          flags: flags)
         }
-        let saves = GamePaths.saves(for: language)
-        let font = language == .chinese ? GamePaths.file(named: "font.ttf", in: gameFolder) : nil
+        let saves = GamePaths.saves
+        let args = engineArguments
         return gameFolder.path.withCString { game in
             saves.path.withCString { save in
-                withOptionalCString(overlay?.path) { over in
-                    withOptionalCString(font?.path) { fontPath in
-                        "--engine=1.647".withCString { args in
-                            var cfg = AppleHostConfig_t(gameDir: game, overlayDir: over, saveDir: save,
-                                                        fontFile: fontPath, chinese: language == .chinese ? 1 : 0,
-                                                        engineArgs: args)
-                            return AppleHost_Start(&cfg) == 1
-                        }
-                    }
+                withOptionalCString(args) { engineArgs in
+                    var cfg = AppleHostConfig_t(gameDir: game,
+                                                overlayDir: nil,
+                                                saveDir: save,
+                                                fontFile: nil,
+                                                chinese: scriptMode.chinese,
+                                                engineArgs: engineArgs,
+                                                scriptEncoding: scriptMode.scriptEncoding)
+                    return AppleHost_Start(&cfg) == 1
                 }
             }
         }

@@ -21,8 +21,9 @@ final class Renderer: NSObject, MTKViewDelegate {
     private var movieShown = false
     private var needsRedraw = true
 
-    /// The game's client size (1280 x 960 for this game once the engine created its window).
-    private(set) var gameSize = CGSize(width: 1280, height: 960)
+    /// The game's client size: the engine asks for 1280 x 720; it is replaced
+    /// with the engine's own size with the first frame.
+    private(set) var gameSize = CGSize(width: 1280, height: 720)
     /// The picture's rectangle in the view, in points (for mapping input).
     private(set) var contentRect = CGRect.zero
 

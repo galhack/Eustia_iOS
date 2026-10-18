@@ -6,41 +6,35 @@ import UniformTypeIdentifiers
 /// Unattended runs for testing on the simulators and the devices, driven by
 /// the environment of the launch (xcrun simctl launch / devicectl --environment):
 ///
-///   SUBAHIBI_AUTOSTART=ja|zh   skip the launcher and start in that language
-///   SUBAHIBI_SCRIPT="..."      input once the engine runs, the words of
-///                              tools/apple/hosttest.c: wait S, move X Y,
-///                              click X Y, rclick X Y, key VK, wheel D, shot NAME
+///   EUSTIA_AUTOSTART=zh|ja   skip the launcher and start in that language
+///   EUSTIA_SCRIPT="..."      input once the engine runs, the words of
+///                            tools/apple/hosttest.c and the engine's own
+///                            test tools: wait S, move X Y, click X Y,
+///                            rclick X Y, key VK, wheel D, shot NAME
 ///
 /// "shot NAME" writes the picture to Documents/Debug/NAME.png (Caches on tvOS).
-/// Nothing here runs in a normal launch.
+/// Nothing here runs in a normal launch.  EUSTIA_GAME_DIR (GamePaths) points
+/// the launcher at a data folder for such a run.
 enum DebugScript {
     /// In a debug launch the engine's messages (stderr) go to Debug/stderr.txt next to the shots.
     static func redirectLogIfRequested() {
         let env = ProcessInfo.processInfo.environment
-        guard env["SUBAHIBI_AUTOSTART"] != nil || env["SUBAHIBI_SCRIPT"] != nil else { return }
-        let dir = debugDirectory
+        guard env["EUSTIA_AUTOSTART"] != nil || env["EUSTIA_SCRIPT"] != nil else { return }
+        let dir = GamePaths.debugDirectory
         try? FileManager.default.removeItem(at: dir) // no shots of an earlier run left to mislead
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         freopen(dir.appendingPathComponent("stderr.txt").path, "w", stderr)
         setvbuf(stderr, nil, _IONBF, 0)
     }
 
-    static var debugDirectory: URL {
-        #if os(tvOS)
-        GamePaths.caches.appendingPathComponent("Debug", isDirectory: true)
-        #elseif targetEnvironment(macCatalyst)
-        GamePaths.applicationSupport.appendingPathComponent("Debug", isDirectory: true)
-        #else
-        GamePaths.documents.appendingPathComponent("Debug", isDirectory: true)
-        #endif
-    }
+    static var debugDirectory: URL { GamePaths.debugDirectory }
 
     static var autostart: GameLanguage? {
-        ProcessInfo.processInfo.environment["SUBAHIBI_AUTOSTART"].flatMap(GameLanguage.init(rawValue:))
+        ProcessInfo.processInfo.environment["EUSTIA_AUTOSTART"].flatMap(GameLanguage.init(rawValue:))
     }
 
     static func runIfRequested() {
-        guard let script = ProcessInfo.processInfo.environment["SUBAHIBI_SCRIPT"], !script.isEmpty else { return }
+        guard let script = ProcessInfo.processInfo.environment["EUSTIA_SCRIPT"], !script.isEmpty else { return }
         Thread.detachNewThread {
             run(script)
         }

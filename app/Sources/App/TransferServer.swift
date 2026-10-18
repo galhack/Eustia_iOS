@@ -8,13 +8,13 @@ import Network
 ///   PUT /files/<name>      a file of the game folder; the body is the file
 ///
 /// Every request must carry the pairing code shown on the device
-/// (X-Subahibi-Code), a new random one each time the server is switched on,
-/// so nobody else on the network can write into the app.  Names are plain
-/// file names of the kinds a game folder holds (.arc archives, the patch
-/// executable, the font, ...): anything with a separator, a dot file or
-/// another extension is refused.  A file is written next to
-/// its final place and renamed when complete, so an interrupted transfer
-/// never leaves a truncated archive behind.
+/// (X-Eustia-Code; the sister port's X-Subahibi-Code is accepted too), a new
+/// random one each time the server is switched on, so nobody else on the
+/// network can write into the app.  Names are plain file names of the kinds a
+/// game folder holds (.arc archives, BGI.gdb, BGI.hvl, ...): anything with a
+/// separator, a dot file or another extension is refused.  A file is written
+/// next to its final place and renamed when complete, so an interrupted
+/// transfer never leaves a truncated archive behind.
 final class TransferServer: ObservableObject {
     static let port: UInt16 = 8765
 
@@ -79,7 +79,7 @@ final class TransferServer: ObservableObject {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
             let listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: Self.port)!)
-            listener.service = NWListener.Service(name: "Subahibi", type: "_subahibi._tcp")
+            listener.service = NWListener.Service(name: "Eustia", type: "_eustia._tcp")
             listener.newConnectionHandler = { [weak self] conn in self?.accept(conn) }
             listener.stateUpdateHandler = { [weak self] state in
                 DispatchQueue.main.async {
@@ -166,7 +166,7 @@ final class TransferServer: ObservableObject {
             let key = kv[0].trimmingCharacters(in: .whitespaces).lowercased()
             let value = kv[1].trimmingCharacters(in: .whitespaces)
             if key == "content-length" { length = Int64(value) ?? 0 }
-            if key == "x-subahibi-code" { given = value }
+            if key == "x-eustia-code" || key == "x-subahibi-code" { given = value }
         }
         guard checkCode(given) else { return respond(conn, 403, "wrong pairing code or locked") }
         guard length >= 0 && length < (4 << 30) else { return respond(conn, 400, "bad length") }
@@ -184,7 +184,7 @@ final class TransferServer: ObservableObject {
     }
 
     /// The kinds of files a game folder holds.
-    static let allowedExtensions: Set<String> = ["arc", "exe", "ttf", "gdb", "hvl", "txt", "lst"]
+    static let allowedExtensions: Set<String> = ["arc", "exe", "ttf", "gdb", "hvl", "dat", "txt", "lst"]
 
     static func isSafe(_ name: String) -> Bool {
         guard !name.isEmpty, name.count < 200, !name.hasPrefix("."),
