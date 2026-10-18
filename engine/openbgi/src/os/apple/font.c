@@ -40,7 +40,9 @@
 struct OsFont
 {
 	CTFontRef primary;  // the face asked for (or its stand-in)
-	CTFontRef fallback; // where a character the primary lacks is looked up (NULL: Core Text's cascade)
+	CTFontRef fallback; // the Chinese face for characters the primary lacks
+	CTFontRef extra[6]; // further faces tried per glyph, most wanted first
+	int nextra;
 	int height, width;  // as requested, pixels
 	int ascent;         // the baseline row inside the cell
 	CGFloat xscale;     // horizontal stretch of the glyphs (lfWidth)
@@ -245,45 +247,6 @@ static CTFontRef CreateChinese(int bold, CGFloat size, int* realBold)
 		f = CreateForLanguage("zh-Hans", size);
 	if(!f)
 		return NULL;
-	// the rest of the family as the glyph cascade
-	{
-		CFMutableArrayRef cascade = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
-		if(cascade)
-		{
-			for(i = 0; names[i]; i++)
-			{
-				CTFontRef c = CreateNamed(names[i], size);
-				if(c)
-				{
-					CFArrayAppendValue(cascade, c);
-					CFRelease(c);
-				}
-			}
-			if(CFArrayGetCount(cascade) > 0)
-			{
-				const void* keys[1] = {kCTFontCascadeListAttribute};
-				const void* vals[1] = {cascade};
-				CFDictionaryRef attrs =
-					CFDictionaryCreate(NULL, keys, vals, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-				if(attrs)
-				{
-					CTFontDescriptorRef desc = CTFontDescriptorCreateWithAttributes(attrs);
-					if(desc)
-					{
-						CTFontRef withCascade = CTFontCreateCopyWithAttributes(f, size, NULL, desc);
-						if(withCascade)
-						{
-							CFRelease(f);
-							f = withCascade;
-						}
-						CFRelease(desc);
-					}
-					CFRelease(attrs);
-				}
-			}
-			CFRelease(cascade);
-		}
-	}
 	return f;
 }
 
@@ -357,6 +320,23 @@ OsFont_t* OS_FontOpen(const char* face, int height, int width, int bold, int ita
 	CFRelease(probe);
 	if(gAppleChinese)
 		f->fallback = CreateChinese(bold, size, &fbBold);
+	// Core Text's per-glyph fallback (CTFontCreateForString) crashes on iPadOS 26 when
+	// the primary face has no glyph, so the remaining faces are opened here and tried
+	// directly.  They only matter for rare characters outside the Chinese faces.
+	{
+		static const char* const chineseExtra[] = {"STHeitiSC-Light", "HiraginoSansGB-W3",
+		                                           "PingFangSC-Regular", "HiraginoSans-W3", "Helvetica", NULL};
+		static const char* const japaneseExtra[] = {"HiraMinProN-W3", "PingFangSC-Regular",
+		                                            "AppleSDGothicNeo-Regular", "Helvetica", NULL};
+		const char* const* names = gAppleChinese ? chineseExtra : japaneseExtra;
+		int i;
+		for(i = 0; names[i] && f->nextra < 6; i++)
+		{
+			CTFontRef x = CreateNamed(names[i], size);
+			if(x)
+				f->extra[f->nextra++] = x;
+		}
+	}
 	f->height = height;
 	f->width = width;
 	f->ascent = (int)(height * asc / cell + 0.5);
@@ -385,6 +365,11 @@ void OS_FontClose(OsFont_t* f)
 		CFRelease(f->primary);
 	if(f->fallback)
 		CFRelease(f->fallback);
+	{
+		int i;
+		for(i = 0; i < f->nextra; i++)
+			CFRelease(f->extra[i]);
+	}
 	free(f);
 }
 
@@ -426,17 +411,13 @@ static CGGlyph FindGlyph(const OsFont_t* f, uint32_t cp, CTFontRef* font)
 		return g[0];
 	}
 	{
-		CFStringRef s = CFStringCreateWithCharacters(NULL, u, n);
-		CTFontRef sub = s ? CTFontCreateForString(f->primary, s, CFRangeMake(0, n)) : NULL;
-		if(s)
-			CFRelease(s);
-		if(sub && CTFontGetGlyphsForCharacters(sub, u, g, n) && g[0])
-		{
-			*font = sub;
-			return g[0];
-		}
-		if(sub)
-			CFRelease(sub);
+		int i;
+		for(i = 0; i < f->nextra; i++)
+			if(CTFontGetGlyphsForCharacters(f->extra[i], u, g, n) && g[0])
+			{
+				*font = (CTFontRef)CFRetain(f->extra[i]);
+				return g[0];
+			}
 	}
 	if(cp != 0x25a1 && cp != 0x20)
 		return FindGlyph(f, 0x25a1, font);

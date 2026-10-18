@@ -9,9 +9,9 @@
 > 文件导入到设备上。
 
 **验证状态**：Mac 应用已实际运行到标题、冷开场、正文与存档/读档；iPhone/iPad/visionOS
-模拟器均通过。**iPhone 16 Pro Max 真机已用 Sideloadly 安装并验证**（标题、正文、快速存档、
-重启后快速读档）；iPad 与 Vision Pro 真机需用同样方式侧载/在 Xcode 里签名安装，步骤见下。
-详细记录见 [docs/VALIDATION.md](docs/VALIDATION.md)。
+模拟器均通过。**iPhone 16 Pro Max 与 iPad Pro 13"（M5）真机均已用 Sideloadly 安装并验证**
+（标题、设置页、正文、快速存档、结束进程后快速读档）。Vision Pro 真机需在 Xcode 中选 Team
+后 Run，步骤见下。详细记录见 [docs/VALIDATION.md](docs/VALIDATION.md)。
 
 ---
 

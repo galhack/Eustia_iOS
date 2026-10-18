@@ -92,12 +92,29 @@ bin/openbgi-hosttest GAME_DIR --chinese --save=/tmp/save --seconds=60 \
     （`iphone-real-loadprompt.png`、`iphone-real-loaded.png`）；
   - 真机全程无 undefined / not implemented / 报错。
 
+### iPad Pro 13"（M5，iPadOS 26.4.2，已真机验证）
+
+- 同一 `build/Eustia-ios.ipa` 用 Sideloadly 侧载，4.2 GB 游戏数据通过 `devicectl`
+  推送到 `Documents/Game`；iOS 容器在重装后保留。
+- 实测结果：
+  - 标题画面（`build/screenshots/ipad-real-title.png`）；
+  - 环境设定说明页完整中文（`ipad-real-config.png`）；
+  - START → 冷开场 → 正文，中文文本/立绘/背景/底部菜单正常（`ipad-real-dialogue.png`）；
+  - Q-SAVE → 是，写入 `AiyokunoEustia152.sud`（`ipad-real-qsave-prompt.png`、`ipad-real-saved.png`）；
+  - 结束进程后重新启动 → 推进到更后面 → Q-LOAD → 是，恢复到存档那一句
+    （`ipad-real-loadpre.png`、`ipad-real-loadprompt.png`、`ipad-real-loaded.png`）。
+- 修复记录：初版在 iPadOS 26.4.2 上于冷开场文本绘制时 SIGSEGV，栈为
+  CoreText `CTFontCreateForStringWithLanguage` → `TDescriptor::CreateMatchingDescriptorInternal`
+  （`0xc000000000`）。原因是逐字形的 Core Text 回退 API 在该系统版本上崩溃；
+  现改为在 `OS_FontOpen` 中显式打开一组回退字体（STHeitiSC/HiraginoSansGB/PingFangSC/
+  HiraginoSans/Helvetica），`FindGlyph` 只做 `CTFontGetGlyphsForCharacters` 查表，
+  不再调用 `CTFontCreateForString`。修复后 iPad 上正文、存/读档全部通过。
+
 ### 其他真机
 
 | 设备 | 状态 |
 |---|---|
-| iPad Pro（M5） | 工程与 IPA 就绪、iPad 模拟器通过；真机需用同一 IPA 在 Sideloadly 侧载并推送数据（步骤见 README），本轮未接入 USB，未做真机复测。 |
-| Apple Vision Pro（第一代） | 原生 visionOS 目标与未签名 IPA 已生成、visionOS 模拟器通过；真机需在 Xcode 中选 Team 后 Run（或后续用支持 visionOS 的侧载方式）。 |
+| Apple Vision Pro（第一代） | 原生 visionOS 目标与未签名 IPA 已生成、visionOS 模拟器通过；真机需在 Xcode 中选 Team 后 Run（或后续用支持 visionOS 的侧载方式），本轮未做真机验证。 |
 
 > 真机安装需要玩家自己的 Apple ID 签名，这是 Apple 的限制；本仓库不包含任何证书、
 > 描述文件或账号信息。
@@ -113,7 +130,8 @@ bin/openbgi-hosttest GAME_DIR --chinese --save=/tmp/save --seconds=60 \
    存档标记），不影响读档本身。
 3. **字体**：Windows 汉化通过 Detours 强制 GDI 字体“黑体”；本移植用 CoreText 的
    CJK 回退（PingFang SC / STHeiti SC / Hiragino Sans GB），字形/行宽可能细微不同。
-   正文换行使用引擎的 GBK 感知禁则处理。
+   正文换行使用引擎的 GBK 感知禁则处理。Core Text 的逐字形回退 API 在 iPadOS 26
+   上会崩溃，已改为显式回退字体表（见上）；Apple 各平台共用该实现。
 4. **错误提示框中的日文**：极少数由 `sysprg` 程序弹出的原始日文提示（例如缺文件
    错误）在 GBK 模式下可能显示为乱码；正常剧情文本不受影响。
 5. **影片**：8 个 MPEG-1 影片已验证解码与首帧画面；未逐部完整播放到片尾。
