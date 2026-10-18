@@ -8,10 +8,10 @@
 > 都不在这里，也不会被打包进应用或安装包。你需要自行购买正版游戏，并把自己游戏目录里的
 > 文件导入到设备上。
 
-**验证状态**：Mac Catalyst、iPhone/iPadOS、visionOS 的模拟器构建与画面已验证；Mac 应用
-已实际运行到标题、冷开场与存档/读档。真机安装需要玩家自己的 Apple ID 签名（本机命令行
-Xcode 未登录账号，故真机侧留给你用 Sideloadly/Xcode 完成）。详细记录见
-[docs/VALIDATION.md](docs/VALIDATION.md)。
+**验证状态**：Mac 应用已实际运行到标题、冷开场、正文与存档/读档；iPhone/iPad/visionOS
+模拟器均通过。**iPhone 16 Pro Max 真机已用 Sideloadly 安装并验证**（标题、正文、快速存档、
+重启后快速读档）；iPad 与 Vision Pro 真机需用同样方式侧载/在 Xcode 里签名安装，步骤见下。
+详细记录见 [docs/VALIDATION.md](docs/VALIDATION.md)。
 
 ---
 

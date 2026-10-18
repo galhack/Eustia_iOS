@@ -77,11 +77,27 @@ bin/openbgi-hosttest GAME_DIR --chinese --save=/tmp/save --seconds=60 \
 
 ## 真机状态
 
+### iPhone 16 Pro Max（已真机验证）
+
+- 用 **Sideloadly**（保存的 Apple ID，免费账号）签名安装 `build/Eustia-ios.ipa`；
+  安装后 Bundle ID 被 Sideloadly 追加了一次 Team ID（`org.local.eustia.HM588ACCT5.HM588ACCT5`），
+  不影响使用。
+- 通过 `devicectl` 把 4.2 GB 游戏数据推送进应用容器 `Documents/Game`（app 只读）。
+- 实测结果：
+  - 启动、引擎以 1.520 profile 启动、标题画面（`build/screenshots/iphone-real-device.png`）；
+  - START → 冷开场 → 正文，中文文本/立绘/背景/文本框菜单正常
+    （`iphone-real-dialogue.png`）；
+  - 快速存档（Q-SAVE → 是）写入 `AiyokunoEustia152.sud`（557 KB）；
+  - 结束进程后重新启动 → Q-LOAD → 是，恢复到存档那一句
+    （`iphone-real-loadprompt.png`、`iphone-real-loaded.png`）；
+  - 真机全程无 undefined / not implemented / 报错。
+
+### 其他真机
+
 | 设备 | 状态 |
 |---|---|
-| iPhone 16 Pro Max | 工程、IPA 与签名配置就绪；本机 `xcodebuild -allowProvisioningUpdates` 仍报 “No Accounts”（命令行看不到 Xcode GUI 里的 Apple ID），自动签名未完成。玩家侧用 Sideloadly 点一次即可安装（见 README）。 |
-| iPad Pro（M5） | 同上；iPad 模拟器已通过。 |
-| Apple Vision Pro（第一代） | 原生 visionOS 目标与未签名 IPA 已生成；真机需在 Xcode 中选择 Team 后 Run。visionOS 模拟器已通过。 |
+| iPad Pro（M5） | 工程与 IPA 就绪、iPad 模拟器通过；真机需用同一 IPA 在 Sideloadly 侧载并推送数据（步骤见 README），本轮未接入 USB，未做真机复测。 |
+| Apple Vision Pro（第一代） | 原生 visionOS 目标与未签名 IPA 已生成、visionOS 模拟器通过；真机需在 Xcode 中选 Team 后 Run（或后续用支持 visionOS 的侧载方式）。 |
 
 > 真机安装需要玩家自己的 Apple ID 签名，这是 Apple 的限制；本仓库不包含任何证书、
 > 描述文件或账号信息。
