@@ -6,11 +6,11 @@ address and the pairing code it shows; then on the Mac:
 
     python3 tools/push_data.py --host 192.168.1.23 --code 123456 /path/to/game
 
-Only the files the port uses are sent: the BURIKO archives (*.arc), the
-Chinese patch (BGI-CHS.exe) and its font (font.ttf), and BGI.gdb / BGI.hvl.
-Files the device already has with the same size are skipped, so an
-interrupted transfer can simply be started again.  Needs only the Python
-standard library.
+Only the files the port uses are sent: the game's "PackFile" archives
+(*.arc, including the translated ones), the loose data file, and
+BGI.gdb / BGI.hvl.  Files the device already has with the same size are
+skipped, so an interrupted transfer can simply be started again.  Needs
+only the Python standard library.
 """
 import argparse
 import http.client
@@ -21,12 +21,15 @@ import time
 import urllib.parse
 
 PORT = 8765
-WANTED_EXACT = {"bgi-chs.exe", "font.ttf", "bgi.gdb", "bgi.hvl"}
+# BGI.gdb carries the global settings / read marks, BGI.hvl the install
+# settings; the game itself lives in the PackFile archives.
+WANTED_EXACT = {"bgi.gdb", "bgi.hvl"}
+ARCHIVE_MAGICS = (b"PackFile    ", b"BURIKO ARC20")
 
 
 def is_archive(path):
     with open(path, "rb") as f:
-        return f.read(12) == b"BURIKO ARC20"
+        return f.read(12) in ARCHIVE_MAGICS
 
 
 def wanted(folder):
@@ -38,6 +41,10 @@ def wanted(folder):
         lower = name.lower()
         if lower.endswith(".arc") and is_archive(path):
             files.append(name)
+        elif lower.endswith(".dat") and lower.startswith("data"):
+            # data02002.dat is read by the engine as a loose file; it has
+            # no archive header, so match it by name.
+            files.append(name)
         elif lower in WANTED_EXACT:
             files.append(name)
     return files
@@ -45,7 +52,7 @@ def wanted(folder):
 
 def device_files(host, code):
     conn = http.client.HTTPConnection(host, PORT, timeout=30)
-    conn.request("GET", "/status", headers={"X-Subahibi-Code": code})
+    conn.request("GET", "/status", headers={"X-Eustia-Code": code})
     resp = conn.getresponse()
     body = resp.read()
     if resp.status == 403:
@@ -61,7 +68,7 @@ def send(host, code, folder, name):
     conn = http.client.HTTPConnection(host, PORT, timeout=120)
     conn.putrequest("PUT", "/files/" + urllib.parse.quote(name))
     conn.putheader("Content-Length", str(size))
-    conn.putheader("X-Subahibi-Code", code)
+    conn.putheader("X-Eustia-Code", code)
     conn.endheaders()
     sent, start = 0, time.time()
     with open(path, "rb") as f:
