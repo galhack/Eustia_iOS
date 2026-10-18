@@ -1,0 +1,133 @@
+import Foundation
+
+/// Where the port keeps the player's files on each platform.
+///
+/// * iPhone, iPad, Vision Pro: the game folder is copied into the app's
+///   Documents (Finder file sharing, the Files app, AirDrop) or sent over
+///   the local network; saves and the unpacked Chinese patch live in
+///   Application Support, out of the user's way.
+/// * Apple TV has no user-visible documents and lets an app write only to
+///   Caches and tmp: the game files, the unpacked patch and the saves all
+///   live in Caches, which tvOS may purge when its disk runs low (the
+///   launcher then asks for the files again).
+enum GamePaths {
+    static let fileManager = FileManager.default
+
+    static var documents: URL {
+        fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    static var applicationSupport: URL {
+        var url = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        #if targetEnvironment(macCatalyst)
+        // a Mac application is not in a container: keep to a folder of its own
+        url = url.appendingPathComponent("Subahibi", isDirectory: true)
+        #endif
+        try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// The game folder the player picked (the Mac reads the game where it is
+    /// installed rather than a copy); nil when none was chosen.
+    static var chosenGameFolder: URL? {
+        get {
+            guard let path = UserDefaults.standard.string(forKey: "gameFolderPath") else { return nil }
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        set { UserDefaults.standard.set(newValue?.path, forKey: "gameFolderPath") }
+    }
+
+    static var caches: URL {
+        fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    }
+
+    /// The folder files sent over the network are written to.
+    static var transferTarget: URL {
+        #if os(tvOS)
+        let url = caches.appendingPathComponent("Game", isDirectory: true)
+        #elseif targetEnvironment(macCatalyst)
+        let url = applicationSupport.appendingPathComponent("Game", isDirectory: true)
+        #else
+        let url = documents.appendingPathComponent("Game", isDirectory: true)
+        #endif
+        try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// Saves and the global database, one folder per language: the Chinese
+    /// patch's saves hold GBK text and cannot be shared with the original's.
+    static func saves(for language: GameLanguage) -> URL {
+        #if os(tvOS)
+        // tvOS lets an app write only to Caches and tmp
+        let base = caches
+        #else
+        let base = applicationSupport
+        #endif
+        let url = base.appendingPathComponent("Saves/\(language.rawValue)", isDirectory: true)
+        try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// The unpacked files of BGI-CHS.exe.
+    static var chineseOverlay: URL {
+        #if os(tvOS)
+        caches.appendingPathComponent("CHS", isDirectory: true)
+        #else
+        applicationSupport.appendingPathComponent("CHS", isDirectory: true)
+        #endif
+    }
+
+    /// The game folder: a folder holding sysprg.arc, searched in the places
+    /// above and one level below them.
+    static func findGameFolder() -> URL? {
+        if let chosen = chosenGameFolder, isGameFolder(chosen) { return chosen }
+        var roots = [transferTarget]
+        #if !os(tvOS) && !targetEnvironment(macCatalyst)
+        roots.append(documents) // on a Mac, Documents is the user's own: not searched
+        #endif
+        for root in roots {
+            if isGameFolder(root) { return root }
+            let children = (try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey],
+                                                                 options: [.skipsHiddenFiles])) ?? []
+            for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+            where (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                if isGameFolder(child) { return child }
+            }
+        }
+        return nil
+    }
+
+    static func isGameFolder(_ url: URL) -> Bool {
+        fileExists(named: "sysprg.arc", in: url) && fileExists(named: "system.arc", in: url)
+    }
+
+    /// The file of that name in the folder, the case of the name aside (the
+    /// game was made for a case-insensitive file system).
+    static func file(named name: String, in folder: URL) -> URL? {
+        let direct = folder.appendingPathComponent(name)
+        if fileManager.fileExists(atPath: direct.path) { return direct }
+        let entries = (try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? []
+        if let match = entries.first(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+            return folder.appendingPathComponent(match)
+        }
+        return nil
+    }
+
+    static func fileExists(named name: String, in folder: URL) -> Bool {
+        file(named: name, in: folder) != nil
+    }
+}
+
+enum GameLanguage: String, CaseIterable, Identifiable {
+    case japanese = "ja"
+    case chinese = "zh"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .japanese: return "日本語（原版）"
+        case .chinese: return "简体中文（汉化补丁）"
+        }
+    }
+}

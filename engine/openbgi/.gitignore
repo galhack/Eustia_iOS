@@ -1,0 +1,9 @@
+# build outputs
+obj/
+bin/
+# the engine's error report, written next to the game
+BGIError.txt
+# working files, tools and notes that are not part of the project
+internal/
+__pycache__/
+*.pyc

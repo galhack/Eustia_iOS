@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# Game content: every player must supply their own purchased copy.
+# Nothing from the game is ever committed or packaged into the app.
+# ---------------------------------------------------------------------------
+/data/
+*.arc
+*.ARC
+BGI*.exe
+BGI.gdb
+BGI.hvl
+*.gdb
+*.hvl
+*.dat
+UserData/
+font.ttf
+*.ttf
+*.otf
+
+# The bundled PS Vita tooling is a separate upstream project with its own git
+# history; keep it as a local reference only.
+/EustiaVitaTool/
+
+# ---------------------------------------------------------------------------
+# Private notes, plans and credentials
+# ---------------------------------------------------------------------------
+agents.md
+AGENTS.md
+Agents.md
+IMPLEMENTATION_PLAN.md
+.team
+app/.team
+*.env
+.env*
+*.pem
+*.key
+*.p12
+*.p8
+*.cer
+*.mobileprovision
+*.provisionprofile
+*.xcuserstate
+xcuserdata/
+*.csv
+.*.csv
+*.token
+secrets/
+
+# ---------------------------------------------------------------------------
+# Build products and local tooling
+# ---------------------------------------------------------------------------
+/build/
+/.venv/
+engine/openbgi/obj/
+engine/openbgi/bin/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+*.ipa
+*.app/
+*.dSYM/
+*.o
+*.d
+.DS_Store
+__pycache__/
+*.pyc
+
+# Local game data extraction output
+/extract/
